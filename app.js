@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.5';
+const VERSION = '0.6';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -248,8 +248,40 @@ function renderToday() {
   const greeting = now.getHours() < 12 ? 'Goedemorgen' : now.getHours() < 18 ? 'Goedemiddag' : 'Goedenavond';
   const dateStr = now.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  // Today's calendar events (not planner tasks)
-  const calEvents = state.todayEvents.filter(e => !e.summary?.startsWith('✓'));
+  const calEvents = (state.todayEvents || []).filter(e => !e.summary?.startsWith('✓'));
+  const gezinEvents = (state.gezinEvents || []);
+
+  const taskRow = t => `
+    <div class="task-item" onclick="window.openTask('${t.id}')">
+      <div class="task-item-left">
+        <button class="check-btn" onclick="event.stopPropagation(); window.completeTask('${t.id}')">○</button>
+      </div>
+      <div class="task-item-body">
+        <div class="task-item-main">
+          <span class="task-item-title">${t.title}</span>
+          ${deadlineBadge(t)}
+        </div>
+        <div class="task-item-sub">⏱ ${t.duration} min${t.aiReason ? ' · ' + t.aiReason : ''}</div>
+      </div>
+      <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.showScheduleModal('${t.id}')">📅</button>
+    </div>
+  `;
+
+  const calRow = (e, badge) => {
+    const start = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '';
+    const end = e.end?.dateTime ? new Date(e.end.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `
+      <div class="task-item cal-event">
+        <div class="task-item-body">
+          <div class="task-item-main">
+            <span class="task-item-title">${e.summary || 'Afspraak'}</span>
+            ${badge ? `<span class="badge badge-later" style="font-size:0.65rem">${badge}</span>` : ''}
+          </div>
+          ${start ? `<div class="task-item-sub">${start}${end ? ' – ' + end : ''}</div>` : ''}
+        </div>
+      </div>
+    `;
+  };
 
   $('main-content').innerHTML = `
     <div class="today-view">
@@ -280,35 +312,24 @@ function renderToday() {
         </div>
 
         ${open.length > 1 ? `
-          <div class="section-label" style="margin-top:1.5rem">Daarna</div>
+          <div class="section-label" style="margin-top:1.5rem">Alle taken</div>
           <div class="task-list">
-            ${open.slice(1, 4).map(t => `
-              <div class="task-item" onclick="window.openTask('${t.id}')">
-                <div class="task-item-main">
-                  <span class="task-item-title">${t.title}</span>
-                  ${deadlineBadge(t)}
-                </div>
-                <div class="task-item-sub">⏱ ${t.duration} min${t.aiReason ? ' · ' + t.aiReason : ''}</div>
-              </div>
-            `).join('')}
+            ${open.slice(1).map(taskRow).join('')}
           </div>
         ` : ''}
       `}
 
       ${calEvents.length > 0 ? `
-        <div class="section-label" style="margin-top:1.5rem">Agenda vandaag</div>
+        <div class="section-label" style="margin-top:1.5rem">Agenda</div>
         <div class="task-list">
-          ${calEvents.map(e => {
-            const start = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '';
-            return `
-              <div class="task-item cal-event">
-                <div class="task-item-main">
-                  <span class="task-item-title">${e.summary || 'Afspraak'}</span>
-                  ${start ? `<span class="badge badge-later">${start}</span>` : ''}
-                </div>
-              </div>
-            `;
-          }).join('')}
+          ${calEvents.map(e => calRow(e, '')).join('')}
+        </div>
+      ` : ''}
+
+      ${gezinEvents.length > 0 ? `
+        <div class="section-label" style="margin-top:1.5rem">Gezinsagenda</div>
+        <div class="task-list">
+          ${gezinEvents.map(e => calRow(e, 'Gezin')).join('')}
         </div>
       ` : ''}
     </div>
