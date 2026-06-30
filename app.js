@@ -299,7 +299,10 @@ function renderToday() {
         <div class="task-item-sub">⏱ ${t.duration} min${t.recurrence ? ' · ↺ ' + recurrenceLabel(t.recurrence) : ''}${t.aiReason ? ' · ' + t.aiReason : ''}</div>
       </div>
       <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.showScheduleModal('${t.id}')" title="Inplannen">📅</button>
-      <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.postponeTask('${t.id}')" title="Doorschuiven">→</button>
+      ${t.recurrence
+        ? `<button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.skipTask('${t.id}')" title="Overslaan">⏭</button>`
+        : `<button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.postponeTask('${t.id}')" title="Doorschuiven">→</button>`
+      }
     </div>
   `;
 
@@ -345,7 +348,10 @@ function renderToday() {
           <div class="focus-actions">
             <button class="btn-done" onclick="event.stopPropagation(); window.completeTask('${open[0].id}')">✓ Gedaan</button>
             <button class="btn-schedule" onclick="event.stopPropagation(); window.showScheduleModal('${open[0].id}')">📅 Inplannen</button>
-            <button class="btn-schedule" onclick="event.stopPropagation(); window.postponeTask('${open[0].id}')">→ Doorschuiven</button>
+            ${open[0].recurrence
+              ? `<button class="btn-schedule" onclick="event.stopPropagation(); window.skipTask('${open[0].id}')">⏭ Overslaan</button>`
+              : `<button class="btn-schedule" onclick="event.stopPropagation(); window.postponeTask('${open[0].id}')">→ Doorschuiven</button>`
+            }
           </div>
         </div>
 
@@ -565,7 +571,10 @@ window.openTask = function(id) {
         <button class="btn-primary" onclick="window.saveTask('${id}')">Opslaan</button>
         <button class="btn-done" onclick="window.completeTask('${id}')">✓ Gedaan</button>
         <button class="btn-schedule" onclick="window.showScheduleModal('${id}')">📅 Plannen</button>
-        <button class="btn-schedule" onclick="window.postponeTask('${id}')">→ Doorschuiven</button>
+        ${task.recurrence
+          ? `<button class="btn-schedule" onclick="window.skipTask('${id}')">⏭ Overslaan</button>`
+          : `<button class="btn-schedule" onclick="window.postponeTask('${id}')">→ Doorschuiven</button>`
+        }
       </div>
       <button class="btn-ghost" style="margin-top:0.5rem" onclick="window.switchView('tasks')">← Terug</button>
       <button class="btn-ghost" style="margin-top:0.5rem;color:var(--red);border-color:rgba(224,82,82,0.3)" onclick="window.deleteTask('${id}')">Verwijderen</button>
@@ -844,6 +853,19 @@ async function _doPostpone(task, newDateStr, newDeadline) {
   alert(`Doorgeschoven naar ${dateLabel}.${slots.length === 0 ? ' Geen vrije tijdsloten gevonden op die dag — taak staat open zonder agenda-event.' : ''}`);
   switchView('today');
 }
+
+// ─── Skip recurring task ──────────────────────────────────────────────────────
+window.skipTask = async function(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+  if (!confirm(`"${task.title}" voor deze keer overslaan?`)) return;
+  setLoading(true);
+  await Calendar.deleteTaskEvent(id);
+  await Sheets.updateTask(id, { scheduled_at: '' });
+  await loadData();
+  setLoading(false);
+  switchView('today');
+};
 
 window.deleteTask = async function(id) {
   if (!confirm('Taak verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
