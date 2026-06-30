@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '1.4';
+const VERSION = '1.5';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -1273,19 +1273,50 @@ window.saveBlockDay = async function() {
   setLoading(false);
   renderSettings();
 
-  if (conflicts.length > 0) {
-    const names = conflicts.map(t => `- ${t.title}`).join('\n');
-    if (confirm(`${conflicts.length} taak(en) staan gepland in deze periode:\n${names}\n\nVerwijder hun tijdsloten?`)) {
-      setLoading(true);
-      for (const task of conflicts) {
-        await Calendar.deleteTaskEvent(task.id);
-        await Sheets.updateTask(task.id, { scheduled_at: '' });
-      }
-      await loadData();
-      setLoading(false);
-      renderSettings();
+  if (conflicts.length === 0) return;
+
+  const recurring = conflicts.filter(t => t.recurrence);
+  const oneOff = conflicts.filter(t => !t.recurrence);
+  const lines = [
+    ...recurring.map(t => `- ${t.title} (herhalend → overslaan)`),
+    ...oneOff.map(t => `- ${t.title} (eenmalig → herplannen na blokperiode)`)
+  ].join('\n');
+
+  if (!confirm(`${conflicts.length} taak(en) staan gepland in deze periode:\n${lines}\n\nHerhalende taken worden overgeslagen. Eenmalige taken worden automatisch herpland.`)) return;
+
+  setLoading(true);
+
+  // Day after the block period ends = earliest date for rescheduling
+  const afterBlock = new Date(end);
+  afterBlock.setDate(afterBlock.getDate() + 1);
+  const minDateStr = afterBlock.toISOString().slice(0, 10);
+
+  for (const task of recurring) {
+    await Calendar.deleteTaskEvent(task.id);
+    await Sheets.updateTask(task.id, { scheduled_at: '' });
+  }
+
+  for (const task of oneOff) {
+    await Calendar.deleteTaskEvent(task.id);
+    await Sheets.updateTask(task.id, { scheduled_at: '' });
+
+    const aiDate = await AI.suggestPostponeDate(task, task.deadline, state.tasks, minDateStr);
+    const scheduleDate = aiDate && aiDate >= minDateStr ? aiDate : minDateStr;
+    const newDate = new Date(scheduleDate);
+    const gezinEvents = await Calendar.getGezinEvents(newDate);
+    const slots = await Calendar.getFreeSlots(newDate, task.duration, state.blockDays);
+
+    if (slots.length > 0) {
+      const bestIdx = await AI.suggestSchedule(task, slots, gezinEvents);
+      const slot = slots[bestIdx];
+      await Calendar.scheduleTask(task, slot.start);
+      await Sheets.updateTask(task.id, { scheduled_at: slot.start.toISOString() });
     }
   }
+
+  await loadData();
+  setLoading(false);
+  renderSettings();
 };
 
 window.removeBlockDay = async function(id) {

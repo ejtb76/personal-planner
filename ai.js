@@ -216,9 +216,10 @@ ${gezinSummary || 'Niets'}`;
     }
   },
 
-  async suggestPostponeDate(task, deadline, allTasks) {
+  async suggestPostponeDate(task, deadline, allTasks, minDateStr = null) {
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
+    const earliest = minDateStr && minDateStr > todayStr ? minDateStr : todayStr;
     const otherTasks = allTasks
       .filter(t => t.status === 'open' && t.id !== task.id && t.deadline)
       .map(t => ({ title: t.title, deadline: t.deadline, duration: t.duration + ' min' }));
@@ -226,6 +227,7 @@ ${gezinSummary || 'Niets'}`;
     const system = `Je bent een planningsassistent. Kies de beste datum om een taak opnieuw in te plannen. Retourneer ALLEEN een datum in het formaat YYYY-MM-DD. Geen uitleg, geen andere tekst.`;
 
     const user = `Vandaag: ${todayStr}
+Vroegst mogelijke datum: ${earliest}
 Taak: ${task.title} (${task.duration} min${task.notes ? ', ' + task.notes : ''})
 ${task.no_weekend ? 'Beperking: NIET in het weekend inplannen (alleen ma-vr).' : ''}
 ${deadline ? `Deadline: ${deadline}` : 'Geen deadline — lage prioriteit, mag achteraan'}
@@ -234,8 +236,8 @@ Andere open taken met deadline:
 ${otherTasks.length > 0 ? JSON.stringify(otherTasks) : 'Geen'}
 
 ${deadline
-  ? `Kies een datum na vandaag en vóór de deadline (${deadline}). Geef voldoende buffer: plan niet op de deadline zelf. Vermijd datums waarop al veel andere deadlines vallen.`
-  : `Geen deadline: kies een datum die past in de ruimte tussen taken met urgente deadlines. Als er taken zijn met deadlines ver in de toekomst en er is tussentijds genoeg ruimte, mag deze taak ook eerder worden gepland. Doel: zo dicht mogelijk bij nu, maar zonder urgente deadline-taken te verdringen.`
+  ? `Kies een datum op of na ${earliest} en vóór de deadline (${deadline}). Geef voldoende buffer: plan niet op de deadline zelf. Vermijd datums waarop al veel andere deadlines vallen.`
+  : `Geen deadline: kies een datum op of na ${earliest} die past in de ruimte tussen taken met urgente deadlines. Doel: zo dicht mogelijk bij de vroegste datum, maar zonder urgente deadline-taken te verdringen.`
 }`;
 
 
