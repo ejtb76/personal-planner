@@ -1,4 +1,4 @@
-const CACHE_NAME = 'planner-v14';
+const CACHE_NAME = 'planner-v15';
 const ASSETS = [
   '/personal-planner/',
   '/personal-planner/index.html',

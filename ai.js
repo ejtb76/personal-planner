@@ -196,7 +196,9 @@ Welk tijdslot past het beste?`;
       .map(e => `- ${e.summary}: ${new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`)
       .join('\n');
 
-    const system = `Je bent een planningsassistent. Schrijf een dagelijkse briefing van maximaal 2 zinnen. Eerste zin: welke taak nu direct opgepakt moet worden en de concrete reden (deadline, urgentie, logische volgorde). Tweede zin: compacte samenvatting van de rest van de dag (afspraken, andere deadlines, hoeveel taken). Toon: zakelijk, direct. Geen aanmoedigingen. Nederlands, informeel (je).`;
+    const system = `Je bent een planningsassistent. Geef een dagelijkse briefing als JSON. Retourneer ALLEEN valide JSON in dit formaat:
+{"focus": "naam van de taak om nu mee te beginnen", "focusReason": "één zin: concrete reden (deadline, urgentie, duur)", "agenda": ["Naam afspraak 09:00", "Naam afspraak 11:30"], "context": "één korte zin over de rest van de dag of vrije avond/ochtend"}
+focus en focusReason zijn null als er geen openstaande taken zijn. agenda is een array van strings met naam en starttijd. Toon: zakelijk, direct. Geen aanmoedigingen. Nederlands, informeel (je).`;
 
     const user = `Nu: ${todayStr}, ${timeStr}
 

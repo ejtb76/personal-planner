@@ -364,7 +364,23 @@ function renderToday() {
         <div class="today-date">${dateStr}</div>
       </div>
 
-      ${state.digest ? `<div class="digest-card">${state.digest}</div>` : ''}
+      ${(() => {
+        if (!state.digest) return '';
+        let d = null;
+        try { d = JSON.parse(state.digest); } catch {}
+        if (d && d.focus) {
+          return `<div class="digest-card">
+            <div class="digest-focus">
+              <span class="digest-now-label">Nu doen</span>
+              <span class="digest-focus-title">${d.focus}</span>
+            </div>
+            ${d.focusReason ? `<div class="digest-reason">${d.focusReason}</div>` : ''}
+            ${d.agenda?.length ? `<div class="digest-pills">${d.agenda.map(a => `<span class="digest-pill">${a}</span>`).join('')}</div>` : ''}
+            ${d.context ? `<div class="digest-context">${d.context}</div>` : ''}
+          </div>`;
+        }
+        return `<div class="digest-card">${d?.context || state.digest}</div>`;
+      })()}
 
       ${(open.length > 0 || totalAgenda > 0) ? `
         <div class="day-stats">
