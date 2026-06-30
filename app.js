@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.9';
+const VERSION = '1.0';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
