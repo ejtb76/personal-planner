@@ -170,5 +170,32 @@ Welk tijdslot past het beste?`;
     } catch {
       return 0;
     }
+  },
+
+  async suggestPostponeDate(task, deadline, allTasks) {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const otherTasks = allTasks
+      .filter(t => t.status === 'open' && t.id !== task.id && t.deadline)
+      .map(t => ({ title: t.title, deadline: t.deadline, duration: t.duration + ' min' }));
+
+    const system = `Je bent een planningsassistent. Kies de beste datum om een taak opnieuw in te plannen. Retourneer ALLEEN een datum in het formaat YYYY-MM-DD. Geen uitleg, geen andere tekst.`;
+
+    const user = `Vandaag: ${todayStr}
+Taak: ${task.title} (${task.duration} min${task.notes ? ', ' + task.notes : ''})
+${deadline ? `Deadline: ${deadline}` : 'Geen deadline'}
+
+Andere open taken met deadline:
+${otherTasks.length > 0 ? JSON.stringify(otherTasks) : 'Geen'}
+
+Kies een datum na vandaag${deadline ? ` en vóór de deadline (${deadline})` : ''} waarop deze taak het beste past. Houd rekening met spreiding: vermijd datums waarop al veel andere deadlines vallen. Kies niet te laat (geef buffer voor de deadline) en niet te vroeg als er geen urgentie is.`;
+
+    try {
+      const response = await this._call(system, user);
+      const match = response.trim().match(/\d{4}-\d{2}-\d{2}/);
+      return match ? match[0] : null;
+    } catch {
+      return null;
+    }
   }
 };

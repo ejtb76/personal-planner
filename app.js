@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.7';
+const VERSION = '0.8';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -538,18 +538,23 @@ function _showPostponeWarning(task, daysLeft, minDateStr) {
   overlay.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-title">Deadline is ${label}</div>
-      <div style="font-size:0.88rem;color:var(--muted);line-height:1.5">
+      <div style="font-size:0.88rem;color:var(--muted);line-height:1.5;margin-bottom:0.25rem">
         De deadline voor <strong>${task.title}</strong> is ${label}. Doorschuiven betekent dat je de deadline mist.
       </div>
       <div class="modal-options">
         <button class="btn-modal-option" id="pp-keep">Laten staan — ik doe het vandaag</button>
         <button class="btn-modal-option" id="pp-change">Deadline aanpassen en doorschuiven</button>
       </div>
-      <div class="modal-dt-picker" id="pp-deadline-picker">
+      <div class="modal-dt-picker" id="pp-deadline-section">
         <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">Nieuwe deadline</label>
         <input type="date" id="pp-new-deadline" min="${minDateStr}">
-        <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;margin-top:0.25rem">Doorschuiven naar</label>
-        <input type="date" id="pp-new-date" min="${minDateStr}">
+        <div class="modal-options" id="pp-date-options" style="margin-top:0.75rem">
+          <button class="btn-modal-option" id="pp-ai-date">✨ AI kiest de beste dag</button>
+          <button class="btn-modal-option" id="pp-manual-date">📅 Ik kies zelf</button>
+        </div>
+        <div class="modal-dt-picker" id="pp-manual-section">
+          <input type="date" id="pp-new-date" min="${minDateStr}">
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn-ghost" id="pp-cancel">Annuleren</button>
@@ -564,16 +569,42 @@ function _showPostponeWarning(task, daysLeft, minDateStr) {
 
   overlay.querySelector('#pp-change').addEventListener('click', () => {
     overlay.querySelector('#pp-change').classList.add('selected');
-    overlay.querySelector('#pp-deadline-picker').classList.add('visible');
-    overlay.querySelector('#pp-confirm').style.display = '';
+    overlay.querySelector('#pp-deadline-section').classList.add('visible');
   });
 
-  overlay.querySelector('#pp-confirm').addEventListener('click', () => {
+  overlay.querySelector('#pp-ai-date').addEventListener('click', () => {
+    overlay.querySelector('#pp-ai-date').classList.add('selected');
+    overlay.querySelector('#pp-manual-date').classList.remove('selected');
+    overlay.querySelector('#pp-manual-section').classList.remove('visible');
+    overlay.querySelector('#pp-confirm').style.display = '';
+    overlay.querySelector('#pp-confirm').dataset.mode = 'ai';
+  });
+
+  overlay.querySelector('#pp-manual-date').addEventListener('click', () => {
+    overlay.querySelector('#pp-manual-date').classList.add('selected');
+    overlay.querySelector('#pp-ai-date').classList.remove('selected');
+    overlay.querySelector('#pp-manual-section').classList.add('visible');
+    overlay.querySelector('#pp-confirm').style.display = '';
+    overlay.querySelector('#pp-confirm').dataset.mode = 'manual';
+  });
+
+  overlay.querySelector('#pp-confirm').addEventListener('click', async () => {
     const newDeadline = overlay.querySelector('#pp-new-deadline').value;
-    const newDate = overlay.querySelector('#pp-new-date').value;
-    if (!newDeadline || !newDate) { alert('Vul beide datums in.'); return; }
-    document.body.removeChild(overlay);
-    _doPostpone(task, newDate, newDeadline);
+    if (!newDeadline) { alert('Vul een nieuwe deadline in.'); return; }
+    const mode = overlay.querySelector('#pp-confirm').dataset.mode;
+    if (mode === 'manual') {
+      const newDate = overlay.querySelector('#pp-new-date').value;
+      if (!newDate) { alert('Kies een datum.'); return; }
+      document.body.removeChild(overlay);
+      _doPostpone(task, newDate, newDeadline);
+    } else {
+      document.body.removeChild(overlay);
+      setLoading(true);
+      const aiDate = await AI.suggestPostponeDate({ ...task, deadline: newDeadline }, newDeadline, state.tasks);
+      setLoading(false);
+      if (!aiDate) { alert('AI kon geen geschikte datum vinden. Kies zelf een datum.'); return; }
+      _doPostpone(task, aiDate, newDeadline);
+    }
   });
 
   overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
@@ -585,24 +616,55 @@ function _showPostponePicker(task, minDateStr, maxDateStr) {
   overlay.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-title">Doorschuiven naar</div>
-      <div class="modal-dt-picker visible">
+      ${maxDateStr ? `<div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem">Deadline: ${new Date(maxDateStr).toLocaleDateString('nl-NL', {day:'numeric',month:'long'})}</div>` : ''}
+      <div class="modal-options">
+        <button class="btn-modal-option" id="pp-ai-date">✨ AI kiest de beste dag</button>
+        <button class="btn-modal-option" id="pp-manual-date">📅 Ik kies zelf</button>
+      </div>
+      <div class="modal-dt-picker" id="pp-manual-section">
         <input type="date" id="pp-date" min="${minDateStr}" ${maxDateStr ? `max="${maxDateStr}"` : ''}>
-        ${maxDateStr ? `<div style="font-size:0.75rem;color:var(--muted)">Deadline: ${new Date(maxDateStr).toLocaleDateString('nl-NL', {day:'numeric',month:'long'})}</div>` : ''}
       </div>
       <div class="modal-actions">
         <button class="btn-ghost" id="pp-cancel">Annuleren</button>
-        <button class="btn-primary" id="pp-confirm">Doorschuiven</button>
+        <button class="btn-primary" id="pp-confirm" style="display:none">Doorschuiven</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
 
   overlay.querySelector('#pp-cancel').addEventListener('click', () => document.body.removeChild(overlay));
-  overlay.querySelector('#pp-confirm').addEventListener('click', () => {
-    const newDate = overlay.querySelector('#pp-date').value;
-    if (!newDate) { alert('Kies een datum.'); return; }
-    document.body.removeChild(overlay);
-    _doPostpone(task, newDate, null);
+
+  overlay.querySelector('#pp-ai-date').addEventListener('click', () => {
+    overlay.querySelector('#pp-ai-date').classList.add('selected');
+    overlay.querySelector('#pp-manual-date').classList.remove('selected');
+    overlay.querySelector('#pp-manual-section').classList.remove('visible');
+    overlay.querySelector('#pp-confirm').style.display = '';
+    overlay.querySelector('#pp-confirm').dataset.mode = 'ai';
+  });
+
+  overlay.querySelector('#pp-manual-date').addEventListener('click', () => {
+    overlay.querySelector('#pp-manual-date').classList.add('selected');
+    overlay.querySelector('#pp-ai-date').classList.remove('selected');
+    overlay.querySelector('#pp-manual-section').classList.add('visible');
+    overlay.querySelector('#pp-confirm').style.display = '';
+    overlay.querySelector('#pp-confirm').dataset.mode = 'manual';
+  });
+
+  overlay.querySelector('#pp-confirm').addEventListener('click', async () => {
+    const mode = overlay.querySelector('#pp-confirm').dataset.mode;
+    if (mode === 'manual') {
+      const newDate = overlay.querySelector('#pp-date').value;
+      if (!newDate) { alert('Kies een datum.'); return; }
+      document.body.removeChild(overlay);
+      _doPostpone(task, newDate, null);
+    } else {
+      document.body.removeChild(overlay);
+      setLoading(true);
+      const aiDate = await AI.suggestPostponeDate(task, task.deadline || null, state.tasks);
+      setLoading(false);
+      if (!aiDate) { alert('AI kon geen geschikte datum vinden. Kies zelf een datum.'); return; }
+      _doPostpone(task, aiDate, null);
+    }
   });
 
   overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
