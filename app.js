@@ -514,6 +514,58 @@ window.saveTask = async function(id) {
   switchView('tasks');
 };
 
+// ─── Later vandaag met ruimtecheck ────────────────────────────────────────────
+async function _laterTodayWithCheck(task) {
+  setLoading(true);
+  const slots = await Calendar.getFreeSlots(new Date(), task.duration);
+  setLoading(false);
+
+  if (slots.length === 0) {
+    alert('Er zijn geen vrije tijdsloten meer vandaag.');
+    return;
+  }
+
+  const totalFree = slots.reduce((sum, s) => sum + (s.end - s.start) / 60000, 0);
+  const tight = slots.length === 1 || totalFree < task.duration * 2;
+
+  if (tight) {
+    const lastSlot = slots[slots.length - 1];
+    const eindtijd = lastSlot.end.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-title">Weinig ruimte vandaag</div>
+        <div style="font-size:0.88rem;color:var(--muted);line-height:1.5">
+          Er is nog <strong>${Math.round(totalFree)} minuten</strong> vrije tijd over (tot ${eindtijd}).
+          ${slots.length === 1 ? 'Er is nog maar één tijdslot beschikbaar.' : ''}
+        </div>
+        <div class="modal-options" style="margin-top:0.75rem">
+          <button class="btn-modal-option" id="lt-proceed">Toch vandaag inplannen</button>
+          <button class="btn-modal-option" id="lt-other">Andere dag kiezen</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="lt-cancel">Annuleren</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#lt-cancel').addEventListener('click', () => document.body.removeChild(overlay));
+    overlay.querySelector('#lt-proceed').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+      window.showScheduleModal(task.id);
+    });
+    overlay.querySelector('#lt-other').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+      window.postponeTask(task.id);
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+  } else {
+    window.showScheduleModal(task.id);
+  }
+}
+
 // ─── Postpone task ────────────────────────────────────────────────────────────
 window.postponeTask = function(id) {
   const task = state.tasks.find(t => t.id === id);
@@ -578,7 +630,7 @@ function _showPostponeWarning(task, daysLeft, minDateStr) {
 
   overlay.querySelector('#pp-later-today').addEventListener('click', () => {
     document.body.removeChild(overlay);
-    window.showScheduleModal(task.id);
+    _laterTodayWithCheck(task);
   });
 
   overlay.querySelector('#pp-change').addEventListener('click', () => {
@@ -651,7 +703,7 @@ function _showPostponePicker(task, minDateStr, maxDateStr) {
 
   overlay.querySelector('#pp-later-today').addEventListener('click', () => {
     document.body.removeChild(overlay);
-    window.showScheduleModal(task.id);
+    _laterTodayWithCheck(task);
   });
 
   overlay.querySelector('#pp-ai-date').addEventListener('click', () => {
