@@ -177,6 +177,45 @@ Welk tijdslot past het beste?`;
     }
   },
 
+  async getDailyDigest(prioritizedTasks, calendarEvents, gezinEvents) {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+    const timeStr = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+
+    const taskSummary = prioritizedTasks.slice(0, 6).map(t =>
+      `- ${t.title} (${t.duration}min${t.deadline ? ', deadline ' + t.deadline : ''}${t.recurrence ? ', ↺ ' + t.recurrence : ''})`
+    ).join('\n');
+
+    const calSummary = calendarEvents
+      .filter(e => e.start?.dateTime)
+      .map(e => `- ${e.summary}: ${new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`)
+      .join('\n');
+
+    const gezinSummary = gezinEvents
+      .filter(e => e.start?.dateTime)
+      .map(e => `- ${e.summary}: ${new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`)
+      .join('\n');
+
+    const system = `Je bent een planningsassistent. Schrijf een dagelijkse briefing van maximaal 2 zinnen. Eerste zin: welke taak nu direct opgepakt moet worden en de concrete reden (deadline, urgentie, logische volgorde). Tweede zin: compacte samenvatting van de rest van de dag (afspraken, andere deadlines, hoeveel taken). Toon: zakelijk, direct. Geen aanmoedigingen. Nederlands, informeel (je).`;
+
+    const user = `Nu: ${todayStr}, ${timeStr}
+
+Taken vandaag (op prioriteit):
+${taskSummary || 'Geen'}
+
+Agenda:
+${calSummary || 'Niets'}
+
+Gezinsagenda:
+${gezinSummary || 'Niets'}`;
+
+    try {
+      return await this._call(system, user);
+    } catch {
+      return null;
+    }
+  },
+
   async suggestPostponeDate(task, deadline, allTasks) {
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);

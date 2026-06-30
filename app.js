@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '1.1';
+const VERSION = '1.2';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -12,8 +12,10 @@ let state = {
   view: 'today',      // today | tasks | add | chat | settings
   tasks: [],
   todayEvents: [],
+  gezinEvents: [],
   prioritized: [],
   chatHistory: [],
+  digest: null,
   loading: false,
   config: null
 };
@@ -72,6 +74,20 @@ async function loadData() {
     // Auto-prioritize on load
     if (state.tasks.filter(t => t.status === 'open').length > 0) {
       state.prioritized = await AI.prioritize(state.tasks, state.todayEvents, state.gezinEvents);
+    }
+    // Daily digest — cached per day
+    const todayKey = 'digest_' + new Date().toISOString().slice(0, 10);
+    const cached = localStorage.getItem(todayKey);
+    if (cached) {
+      state.digest = cached;
+    } else if (state.prioritized.length > 0) {
+      state.digest = await AI.getDailyDigest(state.prioritized, state.todayEvents, state.gezinEvents);
+      if (state.digest) {
+        localStorage.setItem(todayKey, state.digest);
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('digest_') && k !== todayKey)
+          .forEach(k => localStorage.removeItem(k));
+      }
     }
   } catch (e) {
     console.error('Load error:', e);
@@ -268,6 +284,16 @@ window.switchView = function(view) {
   if (renders[view]) renders[view]();
 };
 
+window.refreshDigest = async function() {
+  const todayKey = 'digest_' + new Date().toISOString().slice(0, 10);
+  localStorage.removeItem(todayKey);
+  setLoading(true);
+  state.digest = await AI.getDailyDigest(state.prioritized, state.todayEvents, state.gezinEvents);
+  if (state.digest) localStorage.setItem(todayKey, state.digest);
+  setLoading(false);
+  renderToday();
+};
+
 window.refreshData = async function() {
   await loadData();
   switchView(state.view);
@@ -285,6 +311,11 @@ function renderToday() {
 
   const calEvents = (state.todayEvents || []).filter(e => !e.summary?.startsWith('✓'));
   const gezinEvents = (state.gezinEvents || []);
+
+  const nearestDeadline = open
+    .filter(t => t.deadline)
+    .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))[0];
+  const totalAgenda = calEvents.length + gezinEvents.length;
 
   const taskRow = t => `
     <div class="task-item" onclick="window.openTask('${t.id}')">
@@ -329,6 +360,16 @@ function renderToday() {
         <div class="today-date">${dateStr}</div>
       </div>
 
+      ${state.digest ? `<div class="digest-card">${state.digest}</div>` : ''}
+
+      ${(open.length > 0 || totalAgenda > 0) ? `
+        <div class="day-stats">
+          ${open.length > 0 ? `<span class="day-stat">📋 ${open.length} ${open.length === 1 ? 'taak' : 'taken'}</span>` : ''}
+          ${totalAgenda > 0 ? `<span class="day-stat">📅 ${totalAgenda} ${totalAgenda === 1 ? 'afspraak' : 'afspraken'}</span>` : ''}
+          ${nearestDeadline ? `<span class="day-stat">⏰ ${formatDate(nearestDeadline.deadline)}</span>` : ''}
+        </div>
+      ` : ''}
+
       ${open.length === 0 ? `
         <div class="empty-state">
           <div class="empty-icon">◎</div>
@@ -336,7 +377,10 @@ function renderToday() {
           <button class="btn-primary" onclick="window.switchView('add')">Taak toevoegen</button>
         </div>
       ` : `
-        <div class="section-label">Nu doen</div>
+        <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Direct oppakken</span>
+          <button class="icon-btn" style="font-size:0.8rem;padding:0.2rem 0.4rem" onclick="window.refreshDigest()" title="Briefing vernieuwen">↻</button>
+        </div>
         <div class="focus-task" onclick="window.openTask('${open[0].id}')">
           <div class="focus-title">${open[0].title}</div>
           ${open[0].aiReason ? `<div class="focus-reason">${open[0].aiReason}</div>` : ''}
