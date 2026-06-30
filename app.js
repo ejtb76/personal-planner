@@ -551,6 +551,7 @@ function _showPostponeWarning(task, daysLeft, minDateStr) {
       </div>
       <div class="modal-options">
         <button class="btn-modal-option" id="pp-keep">Laten staan — ik doe het vandaag</button>
+        <button class="btn-modal-option" id="pp-later-today">⏱ Later vandaag inplannen</button>
         <button class="btn-modal-option" id="pp-change">Deadline aanpassen en doorschuiven</button>
       </div>
       <div class="modal-dt-picker" id="pp-deadline-section">
@@ -574,6 +575,11 @@ function _showPostponeWarning(task, daysLeft, minDateStr) {
 
   overlay.querySelector('#pp-keep').addEventListener('click', () => document.body.removeChild(overlay));
   overlay.querySelector('#pp-cancel').addEventListener('click', () => document.body.removeChild(overlay));
+
+  overlay.querySelector('#pp-later-today').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+    window.showScheduleModal(task.id);
+  });
 
   overlay.querySelector('#pp-change').addEventListener('click', () => {
     overlay.querySelector('#pp-change').classList.add('selected');
@@ -626,6 +632,7 @@ function _showPostponePicker(task, minDateStr, maxDateStr) {
       <div class="modal-title">Doorschuiven naar</div>
       ${maxDateStr ? `<div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem">Deadline: ${new Date(maxDateStr).toLocaleDateString('nl-NL', {day:'numeric',month:'long'})}</div>` : ''}
       <div class="modal-options">
+        <button class="btn-modal-option" id="pp-later-today">⏱ Later vandaag</button>
         <button class="btn-modal-option" id="pp-ai-date">✨ AI kiest de beste dag</button>
         <button class="btn-modal-option" id="pp-manual-date">📅 Ik kies zelf</button>
       </div>
@@ -641,6 +648,11 @@ function _showPostponePicker(task, minDateStr, maxDateStr) {
   document.body.appendChild(overlay);
 
   overlay.querySelector('#pp-cancel').addEventListener('click', () => document.body.removeChild(overlay));
+
+  overlay.querySelector('#pp-later-today').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+    window.showScheduleModal(task.id);
+  });
 
   overlay.querySelector('#pp-ai-date').addEventListener('click', () => {
     overlay.querySelector('#pp-ai-date').classList.add('selected');
