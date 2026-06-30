@@ -404,6 +404,64 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Schedule modal ───────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 900;
+      background: rgba(15,15,19,0.75);
+      display: flex; align-items: flex-end; justify-content: center;
+      backdrop-filter: blur(4px);
+      padding: 1rem;
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    }
+    .modal-sheet {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      width: 100%; max-width: 480px;
+      display: flex; flex-direction: column; gap: 1rem;
+    }
+    .modal-title {
+      font-size: 1rem; font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .modal-options {
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .btn-modal-option {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 0.875rem 1rem;
+      font-size: 0.93rem; font-weight: 500;
+      cursor: pointer; text-align: left;
+      transition: border-color 0.15s;
+    }
+    .btn-modal-option:active { border-color: var(--accent); }
+    .btn-modal-option.selected { border-color: var(--accent); }
+    .modal-dt-picker {
+      display: none; flex-direction: column; gap: 0.75rem;
+    }
+    .modal-dt-picker.visible { display: flex; }
+    .modal-dt-picker input[type="datetime-local"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.95rem;
+      padding: 0.75rem 1rem;
+      font-family: inherit;
+      outline: none;
+      width: 100%;
+      color-scheme: dark;
+    }
+    .modal-dt-picker input[type="datetime-local"]:focus {
+      border-color: var(--accent);
+    }
+    .modal-actions { display: flex; gap: 0.5rem; }
+    .modal-actions .btn-ghost { flex: 1; }
   </style>
 </head>
 <body>

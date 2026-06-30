@@ -271,7 +271,7 @@ function renderToday() {
           </div>
           <div class="focus-actions">
             <button class="btn-done" onclick="event.stopPropagation(); window.completeTask('${open[0].id}')">✓ Gedaan</button>
-            <button class="btn-schedule" onclick="event.stopPropagation(); window.scheduleTask('${open[0].id}')">📅 Inplannen</button>
+            <button class="btn-schedule" onclick="event.stopPropagation(); window.showScheduleModal('${open[0].id}')">📅 Inplannen</button>
           </div>
         </div>
 
@@ -455,7 +455,7 @@ window.openTask = function(id) {
       <div style="display:flex;gap:0.75rem;margin-top:1rem">
         <button class="btn-primary" onclick="window.saveTask('${id}')">Opslaan</button>
         <button class="btn-done" onclick="window.completeTask('${id}')">✓ Gedaan</button>
-        <button class="btn-schedule" onclick="window.scheduleTask('${id}')">📅 Plannen</button>
+        <button class="btn-schedule" onclick="window.showScheduleModal('${id}')">📅 Plannen</button>
       </div>
       <button class="btn-ghost" style="margin-top:0.5rem" onclick="window.switchView('tasks')">← Terug</button>
     </div>
@@ -482,6 +482,82 @@ window.completeTask = async function(id) {
   await Sheets.completeTask(id);
   await loadData();
   setLoading(false);
+  switchView('today');
+};
+
+// ─── Schedule modal ───────────────────────────────────────────────────────────
+window.showScheduleModal = function(id) {
+  const now = new Date();
+  const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 16);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">Wanneer wil je dit inplannen?</div>
+      <div class="modal-options">
+        <button class="btn-modal-option" id="opt-ai">✨ AI kiest het beste moment voor mij</button>
+        <button class="btn-modal-option" id="opt-manual">📅 Zelf een datum en tijd kiezen</button>
+      </div>
+      <div class="modal-dt-picker" id="dt-picker">
+        <input type="datetime-local" id="dt-input" min="${localIso}" value="${localIso}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="modal-cancel">Annuleren</button>
+        <button class="btn-primary" id="modal-confirm" style="display:none">Inplannen</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#opt-ai').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+    window.scheduleTask(id);
+  });
+
+  overlay.querySelector('#opt-manual').addEventListener('click', () => {
+    overlay.querySelector('#opt-manual').classList.add('selected');
+    overlay.querySelector('#opt-ai').classList.remove('selected');
+    overlay.querySelector('#dt-picker').classList.add('visible');
+    overlay.querySelector('#modal-confirm').style.display = '';
+  });
+
+  overlay.querySelector('#modal-cancel').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+
+  overlay.querySelector('#modal-confirm').addEventListener('click', () => {
+    const val = overlay.querySelector('#dt-input').value;
+    if (!val) return;
+    document.body.removeChild(overlay);
+    window.scheduleTaskManual(id, val);
+  });
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) document.body.removeChild(overlay);
+  });
+};
+
+window.scheduleTaskManual = async function(id, datetimeLocalStr) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+
+  const startTime = new Date(datetimeLocalStr);
+  if (startTime <= new Date()) {
+    alert('Kies een tijdstip in de toekomst.');
+    return;
+  }
+
+  setLoading(true);
+  await Calendar.scheduleTask(task, startTime);
+  await Sheets.updateTask(id, { scheduled_at: startTime.toISOString() });
+  await loadData();
+  setLoading(false);
+
+  const timeStr = startTime.toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  alert(`Ingepland op ${timeStr}`);
   switchView('today');
 };
 
