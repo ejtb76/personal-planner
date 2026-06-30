@@ -49,12 +49,12 @@ export const AI = {
       end: e.end?.dateTime || e.end?.date
     }));
 
-    const system = `Je bent een persoonlijke planningsassistent. Je helpt de gebruiker hun taken te prioriteren op een directe, concrete en ondersteunende manier. 
-    
-Geef geen lange uitleg. Geef een gerangschikte lijst van taken met per taak één zin waarom deze nu belangrijk is.
-Antwoord in het Nederlands. Wees concreet en warm, niet formeel.
+    const system = `Je bent een planningsassistent. Rangschik taken op basis van objectieve criteria: deadline-urgentie, tijdsduur, agenda-ruimte en onderlinge afhankelijkheden. Geen aanmoedigingen, geen opvulling.
+
+Per taak één zin: de feitelijke reden waarom deze hoger staat dan de volgende. Benoem het concrete criterium (bijv. "deadline morgen", "blokkeert taak X", "past alleen in de ochtend").
+Antwoord in het Nederlands.
 Retourneer ALLEEN valide JSON in dit formaat:
-[{"id": "task_id", "reason": "korte reden"}]`;
+[{"id": "task_id", "reason": "korte feitelijke reden"}]`;
 
     const user = `Vandaag is het ${todayStr}.
 
@@ -94,7 +94,7 @@ Rangschik mijn taken van meest naar minst urgent/belangrijk voor vandaag. Houd r
       `- ${e.summary}: ${e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : 'hele dag'}`
     ).join('\n');
 
-    const system = `Je bent een persoonlijke planningsassistent. Vandaag is ${todayStr}.
+    const system = `Je bent een planningsassistent. Vandaag is ${todayStr}.
 
 De gebruiker heeft de volgende openstaande taken:
 ${taskSummary || 'Geen openstaande taken.'}
@@ -102,7 +102,7 @@ ${taskSummary || 'Geen openstaande taken.'}
 Wat er vandaag in de agenda staat:
 ${eventSummary || 'Niets gepland.'}
 
-Wees concreet, kort en ondersteunend. Geef geen onnodige uitleg. Als iemand vraagt wat ze moeten doen, noem dan één ding. Spreek de gebruiker aan met 'je'. Antwoord in het Nederlands.`;
+Toon: zakelijk, feitelijk, bondig. Geen aanmoedigingen, geen complimenten, geen holle frasen. Geef concrete adviezen met een korte, heldere onderbouwing op basis van deadlines, duur en agenda. Als de gebruiker het er niet mee eens is, heroverweeg dan op basis van de argumenten — niet om een plezier te doen. Spreek de gebruiker aan met 'je'. Antwoord in het Nederlands.`;
 
     const messages = [
       ...history.map(h => ({ role: h.role, content: h.content })),
@@ -131,7 +131,7 @@ Wees concreet, kort en ondersteunend. Geef geen onnodige uitleg. Als iemand vraa
   async suggestSchedule(task, freeSlots) {
     if (freeSlots.length === 0) return null;
 
-    const system = `Je bent een planningsassistent. Kies het beste tijdslot voor een taak op basis van de beschikbare tijdsloten. Retourneer ALLEEN de index (0, 1, 2...) van het beste tijdslot als getal. Geen uitleg.`;
+    const system = `Je bent een planningsassistent. Kies het objectief beste tijdslot voor de taak. Criteria: genoeg ruimte voor de duur, niet vlak voor of na een ander event (buffer), voorkeur voor ochtend bij concentratietaken tenzij de taak anders vereist. Retourneer ALLEEN de index (0, 1, 2...) van het gekozen tijdslot als getal. Geen uitleg.`;
 
     const user = `Taak: ${task.title} (${task.duration} minuten, ${task.notes || 'geen extra context'})
 
