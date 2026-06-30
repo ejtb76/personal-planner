@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '1.0';
+const VERSION = '1.1';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -99,6 +99,39 @@ function daysUntil(dateStr) {
   const diff = new Date(dateStr) - new Date();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
+
+function recurrenceLabel(rec) {
+  if (!rec) return '';
+  if (rec === 'daily') return 'dagelijks';
+  const [type, count] = rec.split(':');
+  if (type === 'weekly') return `${count}×/week`;
+  if (type === 'monthly') return `${count}×/maand`;
+  return '';
+}
+
+function recurrenceBadge(task) {
+  if (!task.recurrence) return '';
+  return `<span class="badge badge-later" style="font-size:0.65rem">↺ ${recurrenceLabel(task.recurrence)}</span>`;
+}
+
+function _getRecurrenceFromForm(prefix) {
+  const sel = document.getElementById(prefix + '-recurrence');
+  if (!sel || !sel.value) return '';
+  if (sel.value === 'daily') return 'daily';
+  const count = parseInt(document.getElementById(prefix + '-recurrence-count')?.value) || 1;
+  return `${sel.value}:${count}`;
+}
+
+window._updateRecurrenceUI = function(prefix) {
+  const sel = document.getElementById(prefix + '-recurrence');
+  const extra = document.getElementById(prefix + '-recurrence-extra');
+  const unit = document.getElementById(prefix + '-recurrence-unit');
+  const countEl = document.getElementById(prefix + '-recurrence-count');
+  const show = sel.value === 'weekly' || sel.value === 'monthly';
+  extra.style.display = show ? 'flex' : 'none';
+  if (unit) unit.textContent = sel.value === 'monthly' ? 'keer per maand' : 'keer per week';
+  if (countEl) countEl.max = sel.value === 'weekly' ? 7 : 31;
+};
 
 function deadlineBadge(task) {
   const days = daysUntil(task.deadline);
@@ -261,7 +294,7 @@ function renderToday() {
           <span class="task-item-title">${t.title}</span>
           ${deadlineBadge(t)}
         </div>
-        <div class="task-item-sub">⏱ ${t.duration} min${t.aiReason ? ' · ' + t.aiReason : ''}</div>
+        <div class="task-item-sub">⏱ ${t.duration} min${t.recurrence ? ' · ↺ ' + recurrenceLabel(t.recurrence) : ''}${t.aiReason ? ' · ' + t.aiReason : ''}</div>
       </div>
       <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.showScheduleModal('${t.id}')" title="Inplannen">📅</button>
       <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.postponeTask('${t.id}')" title="Doorschuiven">→</button>
@@ -305,6 +338,7 @@ function renderToday() {
           <div class="focus-meta">
             <span>⏱ ${open[0].duration} min</span>
             ${deadlineBadge(open[0])}
+            ${recurrenceBadge(open[0])}
           </div>
           <div class="focus-actions">
             <button class="btn-done" onclick="event.stopPropagation(); window.completeTask('${open[0].id}')">✓ Gedaan</button>
@@ -419,6 +453,19 @@ function renderAdd() {
         <label>Categorie</label>
         <input type="text" id="a-category" placeholder="bijv. werk, persoonlijk, gezondheid">
       </div>
+      <div class="form-group">
+        <label>Herhaling</label>
+        <select id="a-recurrence" onchange="window._updateRecurrenceUI('a')">
+          <option value="">Niet herhalend</option>
+          <option value="daily">Elke dag</option>
+          <option value="weekly">Keer per week</option>
+          <option value="monthly">Keer per maand</option>
+        </select>
+        <div id="a-recurrence-extra" style="display:none;align-items:center;gap:0.5rem;margin-top:0.4rem">
+          <input type="number" id="a-recurrence-count" value="2" min="1" max="7" style="width:64px;padding:0.4rem 0.5rem">
+          <span id="a-recurrence-unit" style="font-size:0.88rem;color:var(--muted)">keer per week</span>
+        </div>
+      </div>
       ${openTasks.length > 0 ? `
         <div class="form-group">
           <label>Wacht op (afhankelijkheid)</label>
@@ -444,7 +491,8 @@ window.submitTask = async function() {
     deadline: $('a-deadline')?.value || '',
     duration: parseInt($('a-duration')?.value) || 30,
     category: $('a-category')?.value.trim() || '',
-    dependencies: depVal ? [depVal] : []
+    dependencies: depVal ? [depVal] : [],
+    recurrence: _getRecurrenceFromForm('a')
   };
 
   setLoading(true);
@@ -487,6 +535,26 @@ window.openTask = function(id) {
         <label>Categorie</label>
         <input type="text" id="e-category" value="${task.category}">
       </div>
+      ${(() => {
+        const rec = task.recurrence || '';
+        const type = rec === 'daily' ? 'daily' : rec.includes(':') ? rec.split(':')[0] : '';
+        const count = rec.includes(':') ? rec.split(':')[1] : '2';
+        const showExtra = type === 'weekly' || type === 'monthly';
+        return `
+      <div class="form-group">
+        <label>Herhaling</label>
+        <select id="e-recurrence" onchange="window._updateRecurrenceUI('e')">
+          <option value="" ${!type ? 'selected' : ''}>Niet herhalend</option>
+          <option value="daily" ${type === 'daily' ? 'selected' : ''}>Elke dag</option>
+          <option value="weekly" ${type === 'weekly' ? 'selected' : ''}>Keer per week</option>
+          <option value="monthly" ${type === 'monthly' ? 'selected' : ''}>Keer per maand</option>
+        </select>
+        <div id="e-recurrence-extra" style="display:${showExtra ? 'flex' : 'none'};align-items:center;gap:0.5rem;margin-top:0.4rem">
+          <input type="number" id="e-recurrence-count" value="${count}" min="1" max="${type === 'monthly' ? 31 : 7}" style="width:64px;padding:0.4rem 0.5rem">
+          <span id="e-recurrence-unit" style="font-size:0.88rem;color:var(--muted)">${type === 'monthly' ? 'keer per maand' : 'keer per week'}</span>
+        </div>
+      </div>`;
+      })()}
       <div style="display:flex;gap:0.75rem;margin-top:1rem">
         <button class="btn-primary" onclick="window.saveTask('${id}')">Opslaan</button>
         <button class="btn-done" onclick="window.completeTask('${id}')">✓ Gedaan</button>
@@ -507,7 +575,8 @@ window.saveTask = async function(id) {
     notes: $('e-notes').value.trim(),
     deadline: $('e-deadline').value,
     duration: parseInt($('e-duration').value) || 30,
-    category: $('e-category').value.trim()
+    category: $('e-category').value.trim(),
+    recurrence: _getRecurrenceFromForm('e')
   });
   await loadData();
   setLoading(false);

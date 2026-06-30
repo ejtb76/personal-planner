@@ -6,37 +6,39 @@ const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 // Column mapping (0-indexed)
 // A: id | B: title | C: notes | D: deadline | E: duration_min | F: priority
-// G: status | H: category | I: dependencies | J: created_at | K: scheduled_at
+// G: status | H: category | I: dependencies | J: created_at | K: scheduled_at | L: recurrence
 
 const COL = {
   id: 0, title: 1, notes: 2, deadline: 3, duration: 4,
   priority: 5, status: 6, category: 7, dependencies: 8,
-  created_at: 9, scheduled_at: 10
+  created_at: 9, scheduled_at: 10, recurrence: 11
 };
 
 export const Sheets = {
   spreadsheetId: null,
   sheetName: 'Taken',
+  statsSheetName: 'Statistieken',
 
   init(spreadsheetId) {
     this.spreadsheetId = spreadsheetId;
   },
 
   async ensureSheet() {
-    // Check if sheet exists, if not create it with headers
     const res = await fetch(
       `${BASE}/${this.spreadsheetId}?fields=sheets.properties.title`,
       { headers: Auth.getHeaders() }
     );
     const data = await res.json();
-    const exists = data.sheets?.some(s => s.properties.title === this.sheetName);
-    if (!exists) {
+    const sheets = data.sheets || [];
+    if (!sheets.some(s => s.properties.title === this.sheetName)) {
       await this._createSheet();
+    }
+    if (!sheets.some(s => s.properties.title === this.statsSheetName)) {
+      await this._createStatsSheet();
     }
   },
 
   async _createSheet() {
-    // Add sheet
     await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
       method: 'POST',
       headers: Auth.getHeaders(),
@@ -44,11 +46,23 @@ export const Sheets = {
         requests: [{ addSheet: { properties: { title: this.sheetName } } }]
       })
     });
-    // Add headers
-    await this._write(`${this.sheetName}!A1:K1`, [[
+    await this._write(`${this.sheetName}!A1:L1`, [[
       'id', 'title', 'notes', 'deadline', 'duration_min',
-      'priority', 'status', 'category', 'dependencies', 'created_at', 'scheduled_at'
+      'priority', 'status', 'category', 'dependencies', 'created_at', 'scheduled_at', 'recurrence'
     ]]);
+  },
+
+  async _createStatsSheet() {
+    await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: Auth.getHeaders(),
+      body: JSON.stringify({
+        requests: [{ addSheet: { properties: { title: this.statsSheetName } } }]
+      })
+    });
+    await this._write(`${this.statsSheetName}!A1:D1`, [
+      ['completed_at', 'task_id', 'task_title', 'recurrence']
+    ]);
   },
 
   async _write(range, values) {
@@ -62,9 +76,9 @@ export const Sheets = {
     );
   },
 
-  async _append(values) {
+  async _append(sheetName, colRange, values) {
     return fetch(
-      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.sheetName + '!A:K')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(sheetName + '!' + colRange)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
       {
         method: 'POST',
         headers: Auth.getHeaders(),
@@ -75,7 +89,7 @@ export const Sheets = {
 
   async getAllTasks() {
     const res = await fetch(
-      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.sheetName + '!A2:K')}`,
+      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.sheetName + '!A2:L')}`,
       { headers: Auth.getHeaders() }
     );
     const data = await res.json();
@@ -95,14 +109,15 @@ export const Sheets = {
       category: row[COL.category] || '',
       dependencies: row[COL.dependencies] ? row[COL.dependencies].split(',') : [],
       created_at: row[COL.created_at] || '',
-      scheduled_at: row[COL.scheduled_at] || ''
+      scheduled_at: row[COL.scheduled_at] || '',
+      recurrence: row[COL.recurrence] || ''
     };
   },
 
   async addTask(task) {
     const id = 'task_' + Date.now();
     const now = new Date().toISOString();
-    await this._append([
+    await this._append(this.sheetName, 'A:L', [
       id,
       task.title,
       task.notes || '',
@@ -113,7 +128,8 @@ export const Sheets = {
       task.category || '',
       (task.dependencies || []).join(','),
       now,
-      ''
+      '',
+      task.recurrence || ''
     ]);
     return id;
   },
@@ -122,9 +138,9 @@ export const Sheets = {
     const tasks = await this.getAllTasks();
     const idx = tasks.findIndex(t => t.id === id);
     if (idx === -1) return;
-    const rowNum = idx + 2; // +1 for header, +1 for 1-indexed
+    const rowNum = idx + 2;
     const updated = { ...tasks[idx], ...fields };
-    await this._write(`${this.sheetName}!A${rowNum}:K${rowNum}`, [[
+    await this._write(`${this.sheetName}!A${rowNum}:L${rowNum}`, [[
       updated.id,
       updated.title,
       updated.notes,
@@ -135,19 +151,31 @@ export const Sheets = {
       updated.category,
       updated.dependencies.join(','),
       updated.created_at,
-      updated.scheduled_at
+      updated.scheduled_at,
+      updated.recurrence || ''
     ]]);
   },
 
   async completeTask(id) {
-    await this.updateTask(id, { status: 'done' });
+    const tasks = await this.getAllTasks();
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    if (task.recurrence) {
+      await this._append(this.statsSheetName, 'A:D', [
+        new Date().toISOString(), task.id, task.title, task.recurrence
+      ]);
+      await this.updateTask(id, { status: 'open', scheduled_at: '' });
+    } else {
+      await this.updateTask(id, { status: 'done' });
+    }
   },
 
   async deleteTask(id) {
     const tasks = await this.getAllTasks();
     const idx = tasks.findIndex(t => t.id === id);
     if (idx === -1) return;
-    const rowIndex = idx + 1; // +1 for header row (0-indexed in API)
+    const rowIndex = idx + 1;
 
     const metaRes = await fetch(
       `${BASE}/${this.spreadsheetId}?fields=sheets.properties`,
@@ -156,7 +184,6 @@ export const Sheets = {
     const meta = await metaRes.json();
     const sheet = meta.sheets?.find(s => s.properties.title === this.sheetName);
     if (!sheet) return;
-    const sheetId = sheet.properties.sheetId;
 
     await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
       method: 'POST',
@@ -165,7 +192,7 @@ export const Sheets = {
         requests: [{
           deleteDimension: {
             range: {
-              sheetId,
+              sheetId: sheet.properties.sheetId,
               dimension: 'ROWS',
               startIndex: rowIndex,
               endIndex: rowIndex + 1

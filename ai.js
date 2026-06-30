@@ -39,6 +39,7 @@ export const AI = {
       title: t.title,
       deadline: t.deadline || 'geen deadline',
       duration: t.duration + ' min',
+      recurrence: t.recurrence || null,
       category: t.category || '-',
       notes: t.notes || ''
     }));
@@ -50,6 +51,8 @@ export const AI = {
     }));
 
     const system = `Je bent een planningsassistent. Rangschik taken op basis van objectieve criteria: deadline-urgentie, tijdsduur, agenda-ruimte en onderlinge afhankelijkheden. Geen aanmoedigingen, geen opvulling.
+
+Herhalende taken (recurrence-veld): een taak met `"daily"` moet elke dag gedaan worden en heeft hoge dagelijkse urgentie. Een taak met `"weekly:N"` moet N keer per week en krijgt urgentie naarmate de week vordert. Maandelijkse taken krijgen urgentie naarmate de maand vordert. Herhalende taken zonder deadline worden na voltooiing automatisch gereset.
 
 Prioriteitsregel voor taken zonder deadline: deze staan lager dan taken met een urgente of nabije deadline. Ze mogen echter hoger staan dan taken met een deadline ver in de toekomst, mits er nog voldoende tijd is om die deadline-taken voor hun deadline in te plannen. Verdring een taak zonder deadline alleen als een deadline-taak anders niet op tijd afkomt.
 
