@@ -103,6 +103,8 @@ function daysUntil(dateStr) {
 function recurrenceLabel(rec) {
   if (!rec) return '';
   if (rec === 'daily') return 'dagelijks';
+  if (rec === 'weekdays') return 'elke werkdag';
+  if (rec === 'weekends') return 'in het weekend';
   const [type, count] = rec.split(':');
   if (type === 'weekly') return `${count}×/week`;
   if (type === 'monthly') return `${count}×/maand`;
@@ -458,6 +460,8 @@ function renderAdd() {
         <select id="a-recurrence" onchange="window._updateRecurrenceUI('a')">
           <option value="">Niet herhalend</option>
           <option value="daily">Elke dag</option>
+          <option value="weekdays">Elke werkdag</option>
+          <option value="weekends">In het weekend</option>
           <option value="weekly">Keer per week</option>
           <option value="monthly">Keer per maand</option>
         </select>
@@ -546,6 +550,8 @@ window.openTask = function(id) {
         <select id="e-recurrence" onchange="window._updateRecurrenceUI('e')">
           <option value="" ${!type ? 'selected' : ''}>Niet herhalend</option>
           <option value="daily" ${type === 'daily' ? 'selected' : ''}>Elke dag</option>
+          <option value="weekdays" ${type === 'weekdays' ? 'selected' : ''}>Elke werkdag</option>
+          <option value="weekends" ${type === 'weekends' ? 'selected' : ''}>In het weekend</option>
           <option value="weekly" ${type === 'weekly' ? 'selected' : ''}>Keer per week</option>
           <option value="monthly" ${type === 'monthly' ? 'selected' : ''}>Keer per maand</option>
         </select>
