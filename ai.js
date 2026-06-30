@@ -51,9 +51,9 @@ export const AI = {
 
     const system = `Je bent een planningsassistent. Rangschik taken op basis van objectieve criteria: deadline-urgentie, tijdsduur, agenda-ruimte en onderlinge afhankelijkheden. Geen aanmoedigingen, geen opvulling.
 
-Vaste regel: taken zonder deadline staan altijd onderaan, na alle taken met een deadline. Ze mogen worden verdrongen als urgentere taken met deadlines om hetzelfde tijdslot vragen.
+Prioriteitsregel voor taken zonder deadline: deze staan lager dan taken met een urgente of nabije deadline. Ze mogen echter hoger staan dan taken met een deadline ver in de toekomst, mits er nog voldoende tijd is om die deadline-taken voor hun deadline in te plannen. Verdring een taak zonder deadline alleen als een deadline-taak anders niet op tijd afkomt.
 
-Per taak één zin: de feitelijke reden waarom deze hoger staat dan de volgende. Benoem het concrete criterium (bijv. "deadline morgen", "blokkeert taak X", "geen deadline dus laagste prioriteit").
+Per taak één zin: de feitelijke reden waarom deze hoger staat dan de volgende. Benoem het concrete criterium (bijv. "deadline morgen", "blokkeert taak X", "deadline nog 3 weken dus geen urgentie t.o.v. deze taak").
 Antwoord in het Nederlands.
 Retourneer ALLEEN valide JSON in dit formaat:
 [{"id": "task_id", "reason": "korte feitelijke reden"}]`;
@@ -192,7 +192,7 @@ ${otherTasks.length > 0 ? JSON.stringify(otherTasks) : 'Geen'}
 
 ${deadline
   ? `Kies een datum na vandaag en vóór de deadline (${deadline}). Geef voldoende buffer: plan niet op de deadline zelf. Vermijd datums waarop al veel andere deadlines vallen.`
-  : `Geen deadline: plan deze taak ongeveer 1–2 weken vanaf nu. Taken zonder deadline hebben de laagste prioriteit en mogen worden verdrongen door urgentere taken.`
+  : `Geen deadline: kies een datum die past in de ruimte tussen taken met urgente deadlines. Als er taken zijn met deadlines ver in de toekomst en er is tussentijds genoeg ruimte, mag deze taak ook eerder worden gepland. Doel: zo dicht mogelijk bij nu, maar zonder urgente deadline-taken te verdringen.`
 }`;
 
 
