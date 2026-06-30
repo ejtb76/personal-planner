@@ -99,11 +99,10 @@ export const Calendar = {
   },
 
   async deleteTaskEvent(taskId) {
-    // Find and delete calendar event linked to this task
-    const now = new Date();
-    const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const res = await fetch(
-      `${BASE}/calendars/${encodeURIComponent(this.calendarId)}/events?timeMin=${now.toISOString()}&timeMax=${future.toISOString()}&privateExtendedProperty=planner_task_id=${taskId}`,
+      `${BASE}/calendars/${encodeURIComponent(this.calendarId)}/events?timeMin=${past.toISOString()}&timeMax=${future.toISOString()}&privateExtendedProperty=planner_task_id%3D${taskId}`,
       { headers: Auth.getHeaders() }
     );
     const data = await res.json();
