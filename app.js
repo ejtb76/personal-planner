@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '1.2';
+const VERSION = '1.3';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -145,10 +145,12 @@ window._updateRecurrenceUI = function(prefix) {
   const extra = document.getElementById(prefix + '-recurrence-extra');
   const unit = document.getElementById(prefix + '-recurrence-unit');
   const countEl = document.getElementById(prefix + '-recurrence-count');
+  const weekendRow = document.getElementById(prefix + '-no-weekend-row');
   const show = sel.value === 'weekly' || sel.value === 'monthly';
   extra.style.display = show ? 'flex' : 'none';
   if (unit) unit.textContent = sel.value === 'monthly' ? 'keer per maand' : 'keer per week';
   if (countEl) countEl.max = sel.value === 'weekly' ? 7 : 31;
+  if (weekendRow) weekendRow.style.display = sel.value ? 'none' : '';
 };
 
 function deadlineBadge(task) {
@@ -520,6 +522,12 @@ function renderAdd() {
           <span id="a-recurrence-unit" style="font-size:0.88rem;color:var(--muted)">keer per week</span>
         </div>
       </div>
+      <div id="a-no-weekend-row">
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="a-no-weekend">
+          Niet in het weekend inplannen
+        </label>
+      </div>
       ${openTasks.length > 0 ? `
         <div class="form-group">
           <label>Wacht op (afhankelijkheid)</label>
@@ -546,7 +554,8 @@ window.submitTask = async function() {
     duration: parseInt($('a-duration')?.value) || 30,
     category: $('a-category')?.value.trim() || '',
     dependencies: depVal ? [depVal] : [],
-    recurrence: _getRecurrenceFromForm('a')
+    recurrence: _getRecurrenceFromForm('a'),
+    no_weekend: document.getElementById('a-no-weekend')?.checked || false
   };
 
   setLoading(true);
@@ -611,6 +620,12 @@ window.openTask = function(id) {
         </div>
       </div>`;
       })()}
+      <div id="e-no-weekend-row" style="${task.recurrence ? 'display:none' : ''}">
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="e-no-weekend" ${task.no_weekend ? 'checked' : ''}>
+          Niet in het weekend inplannen
+        </label>
+      </div>
       <div style="display:flex;gap:0.75rem;margin-top:1rem">
         <button class="btn-primary" onclick="window.saveTask('${id}')">Opslaan</button>
         <button class="btn-done" onclick="window.completeTask('${id}')">✓ Gedaan</button>
@@ -635,7 +650,8 @@ window.saveTask = async function(id) {
     deadline: $('e-deadline').value,
     duration: parseInt($('e-duration').value) || 30,
     category: $('e-category').value.trim(),
-    recurrence: _getRecurrenceFromForm('e')
+    recurrence: _getRecurrenceFromForm('e'),
+    no_weekend: document.getElementById('e-no-weekend')?.checked || false
   });
   await loadData();
   setLoading(false);
@@ -871,6 +887,10 @@ function _showPostponePicker(task, minDateStr, maxDateStr) {
 }
 
 async function _doPostpone(task, newDateStr, newDeadline) {
+  if (task.no_weekend && isWeekend(new Date(newDateStr))) {
+    alert('Deze taak is ingesteld als "niet in het weekend". Kies een werkdag.');
+    return;
+  }
   setLoading(true);
   await Calendar.deleteTaskEvent(task.id);
 
@@ -993,6 +1013,10 @@ window.scheduleTaskManual = async function(id, datetimeLocalStr) {
     alert('Kies een tijdstip in de toekomst.');
     return;
   }
+  if (task.no_weekend && isWeekend(startTime)) {
+    alert('Deze taak is ingesteld als "niet in het weekend". Kies een datum door de week.');
+    return;
+  }
 
   const gezinEvents = await Calendar.getGezinEvents(startTime);
   const conflicts = gezinConflictsAt(startTime, task.duration, gezinEvents);
@@ -1013,6 +1037,12 @@ window.scheduleTaskManual = async function(id, datetimeLocalStr) {
   switchView('today');
 };
 
+// ─── Weekend check ────────────────────────────────────────────────────────────
+function isWeekend(date) {
+  const d = new Date(date).getDay();
+  return d === 0 || d === 6;
+}
+
 // ─── Gezin conflict check ─────────────────────────────────────────────────────
 function gezinConflictsAt(startTime, durationMin, gezinEvents) {
   const end = new Date(startTime.getTime() + durationMin * 60000);
@@ -1028,6 +1058,11 @@ function gezinConflictsAt(startTime, durationMin, gezinEvents) {
 window.scheduleTask = async function(id) {
   const task = state.tasks.find(t => t.id === id);
   if (!task) return;
+
+  if (task.no_weekend && isWeekend(new Date())) {
+    alert('Deze taak is niet voor het weekend gepland. Gebruik Doorschuiven om hem naar een werkdag te verplaatsen.');
+    return;
+  }
 
   setLoading(true);
   const today = new Date();

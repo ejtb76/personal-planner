@@ -227,6 +227,7 @@ ${gezinSummary || 'Niets'}`;
 
     const user = `Vandaag: ${todayStr}
 Taak: ${task.title} (${task.duration} min${task.notes ? ', ' + task.notes : ''})
+${task.no_weekend ? 'Beperking: NIET in het weekend inplannen (alleen ma-vr).' : ''}
 ${deadline ? `Deadline: ${deadline}` : 'Geen deadline — lage prioriteit, mag achteraan'}
 
 Andere open taken met deadline:

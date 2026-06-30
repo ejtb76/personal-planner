@@ -6,12 +6,13 @@ const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 // Column mapping (0-indexed)
 // A: id | B: title | C: notes | D: deadline | E: duration_min | F: priority
-// G: status | H: category | I: dependencies | J: created_at | K: scheduled_at | L: recurrence
+// G: status | H: category | I: dependencies | J: created_at | K: scheduled_at
+// L: recurrence | M: no_weekend
 
 const COL = {
   id: 0, title: 1, notes: 2, deadline: 3, duration: 4,
   priority: 5, status: 6, category: 7, dependencies: 8,
-  created_at: 9, scheduled_at: 10, recurrence: 11
+  created_at: 9, scheduled_at: 10, recurrence: 11, no_weekend: 12
 };
 
 export const Sheets = {
@@ -46,9 +47,9 @@ export const Sheets = {
         requests: [{ addSheet: { properties: { title: this.sheetName } } }]
       })
     });
-    await this._write(`${this.sheetName}!A1:L1`, [[
+    await this._write(`${this.sheetName}!A1:M1`, [[
       'id', 'title', 'notes', 'deadline', 'duration_min',
-      'priority', 'status', 'category', 'dependencies', 'created_at', 'scheduled_at', 'recurrence'
+      'priority', 'status', 'category', 'dependencies', 'created_at', 'scheduled_at', 'recurrence', 'no_weekend'
     ]]);
   },
 
@@ -89,7 +90,7 @@ export const Sheets = {
 
   async getAllTasks() {
     const res = await fetch(
-      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.sheetName + '!A2:L')}`,
+      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.sheetName + '!A2:M')}`,
       { headers: Auth.getHeaders() }
     );
     const data = await res.json();
@@ -110,14 +111,15 @@ export const Sheets = {
       dependencies: row[COL.dependencies] ? row[COL.dependencies].split(',') : [],
       created_at: row[COL.created_at] || '',
       scheduled_at: row[COL.scheduled_at] || '',
-      recurrence: row[COL.recurrence] || ''
+      recurrence: row[COL.recurrence] || '',
+      no_weekend: row[COL.no_weekend] === 'true'
     };
   },
 
   async addTask(task) {
     const id = 'task_' + Date.now();
     const now = new Date().toISOString();
-    await this._append(this.sheetName, 'A:L', [
+    await this._append(this.sheetName, 'A:M', [
       id,
       task.title,
       task.notes || '',
@@ -129,7 +131,8 @@ export const Sheets = {
       (task.dependencies || []).join(','),
       now,
       '',
-      task.recurrence || ''
+      task.recurrence || '',
+      task.no_weekend ? 'true' : ''
     ]);
     return id;
   },
@@ -140,7 +143,7 @@ export const Sheets = {
     if (idx === -1) return;
     const rowNum = idx + 2;
     const updated = { ...tasks[idx], ...fields };
-    await this._write(`${this.sheetName}!A${rowNum}:L${rowNum}`, [[
+    await this._write(`${this.sheetName}!A${rowNum}:M${rowNum}`, [[
       updated.id,
       updated.title,
       updated.notes,
@@ -152,7 +155,8 @@ export const Sheets = {
       updated.dependencies.join(','),
       updated.created_at,
       updated.scheduled_at,
-      updated.recurrence || ''
+      updated.recurrence || '',
+      updated.no_weekend ? 'true' : ''
     ]]);
   },
 
