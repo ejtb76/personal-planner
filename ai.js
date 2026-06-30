@@ -27,7 +27,7 @@ export const AI = {
     return data.content?.[0]?.text || '';
   },
 
-  async prioritize(tasks, calendarEvents) {
+  async prioritize(tasks, calendarEvents, gezinEvents = []) {
     const openTasks = tasks.filter(t => t.status === 'open');
     if (openTasks.length === 0) return [];
 
@@ -56,15 +56,22 @@ Antwoord in het Nederlands.
 Retourneer ALLEEN valide JSON in dit formaat:
 [{"id": "task_id", "reason": "korte feitelijke reden"}]`;
 
+    const gezinList = gezinEvents
+      .filter(e => e.start?.dateTime)
+      .map(e => ({ title: e.summary, start: e.start.dateTime, end: e.end.dateTime }));
+
     const user = `Vandaag is het ${todayStr}.
 
 Mijn taken:
 ${JSON.stringify(taskList, null, 2)}
 
-Wat er vandaag al in mijn agenda staat:
+Wat er vandaag al in mijn eigen agenda staat:
 ${JSON.stringify(eventList, null, 2)}
 
-Rangschik mijn taken van meest naar minst urgent/belangrijk voor vandaag. Houd rekening met deadlines, hoe lang iets duurt, en wat er al in de agenda staat.`;
+Wat er vandaag in de gezinsagenda staat (niet blokkerend, wel relevant voor timing):
+${gezinList.length > 0 ? JSON.stringify(gezinList, null, 2) : 'Niets.'}
+
+Rangschik mijn taken van meest naar minst urgent/belangrijk voor vandaag. Houd rekening met deadlines, hoe lang iets duurt, wat er al in de agenda staat, en gezinsverplichtingen die concentratie of beschikbaarheid beïnvloeden.`;
 
     try {
       const response = await this._call(system, user);
@@ -82,7 +89,7 @@ Rangschik mijn taken van meest naar minst urgent/belangrijk voor vandaag. Houd r
     }
   },
 
-  async chat(message, tasks, calendarEvents, history = []) {
+  async chat(message, tasks, calendarEvents, history = [], gezinEvents = []) {
     const openTasks = tasks.filter(t => t.status === 'open');
     const todayStr = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -94,13 +101,21 @@ Rangschik mijn taken van meest naar minst urgent/belangrijk voor vandaag. Houd r
       `- ${e.summary}: ${e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : 'hele dag'}`
     ).join('\n');
 
+    const gezinSummary = gezinEvents
+      .filter(e => e.start?.dateTime)
+      .map(e => `- ${e.summary}: ${new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`)
+      .join('\n');
+
     const system = `Je bent een planningsassistent. Vandaag is ${todayStr}.
 
 De gebruiker heeft de volgende openstaande taken:
 ${taskSummary || 'Geen openstaande taken.'}
 
-Wat er vandaag in de agenda staat:
+Wat er vandaag in de eigen agenda staat:
 ${eventSummary || 'Niets gepland.'}
+
+Wat er vandaag in de gezinsagenda staat (niet blokkerend, wel relevant voor timing):
+${gezinSummary || 'Niets.'}
 
 Toon: zakelijk, feitelijk, bondig. Geen aanmoedigingen, geen complimenten, geen holle frasen. Geef concrete adviezen met een korte, heldere onderbouwing op basis van deadlines, duur en agenda. Als de gebruiker het er niet mee eens is, heroverweeg dan op basis van de argumenten — niet om een plezier te doen. Spreek de gebruiker aan met 'je'. Antwoord in het Nederlands.`;
 
@@ -128,15 +143,23 @@ Toon: zakelijk, feitelijk, bondig. Geen aanmoedigingen, geen complimenten, geen 
     return data.content?.[0]?.text || 'Er ging iets mis.';
   },
 
-  async suggestSchedule(task, freeSlots) {
+  async suggestSchedule(task, freeSlots, gezinEvents = []) {
     if (freeSlots.length === 0) return null;
 
     const system = `Je bent een planningsassistent. Kies het objectief beste tijdslot voor de taak. Criteria: genoeg ruimte voor de duur, niet vlak voor of na een ander event (buffer), voorkeur voor ochtend bij concentratietaken tenzij de taak anders vereist. Retourneer ALLEEN de index (0, 1, 2...) van het gekozen tijdslot als getal. Geen uitleg.`;
+
+    const gezinSummary = gezinEvents
+      .filter(e => e.start?.dateTime)
+      .map(e => `- ${e.summary}: ${new Date(e.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - ${new Date(e.end.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`)
+      .join('\n');
 
     const user = `Taak: ${task.title} (${task.duration} minuten, ${task.notes || 'geen extra context'})
 
 Beschikbare tijdsloten:
 ${freeSlots.map((s, i) => `${i}: ${new Date(s.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - ${new Date(s.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`).join('\n')}
+
+Gezinsagenda vandaag (niet blokkerend maar houd er rekening mee):
+${gezinSummary || 'Niets.'}
 
 Welk tijdslot past het beste?`;
 

@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.4';
+const VERSION = '0.5';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -64,13 +64,14 @@ async function loadData() {
   setLoading(true);
   try {
     await Sheets.ensureSheet();
-    [state.tasks, state.todayEvents] = await Promise.all([
+    [state.tasks, state.todayEvents, state.gezinEvents] = await Promise.all([
       Sheets.getAllTasks(),
-      Calendar.getTodayEvents()
+      Calendar.getTodayEvents(),
+      Calendar.getGezinEvents(new Date())
     ]);
     // Auto-prioritize on load
     if (state.tasks.filter(t => t.status === 'open').length > 0) {
-      state.prioritized = await AI.prioritize(state.tasks, state.todayEvents);
+      state.prioritized = await AI.prioritize(state.tasks, state.todayEvents, state.gezinEvents);
     }
   } catch (e) {
     console.error('Load error:', e);
@@ -564,6 +565,14 @@ window.scheduleTaskManual = async function(id, datetimeLocalStr) {
     return;
   }
 
+  const gezinEvents = await Calendar.getGezinEvents(startTime);
+  const conflicts = gezinConflictsAt(startTime, task.duration, gezinEvents);
+  if (conflicts.length > 0) {
+    const names = conflicts.map(e => e.summary).join(', ');
+    const proceed = confirm(`Je hebt op dit tijdstip al "${names}" in de gezinsagenda staan. Toch op dit tijdstip inplannen?`);
+    if (!proceed) return;
+  }
+
   setLoading(true);
   await Calendar.scheduleTask(task, startTime);
   await Sheets.updateTask(id, { scheduled_at: startTime.toISOString() });
@@ -574,6 +583,17 @@ window.scheduleTaskManual = async function(id, datetimeLocalStr) {
   alert(`Ingepland op ${timeStr}`);
   switchView('today');
 };
+
+// ─── Gezin conflict check ─────────────────────────────────────────────────────
+function gezinConflictsAt(startTime, durationMin, gezinEvents) {
+  const end = new Date(startTime.getTime() + durationMin * 60000);
+  return gezinEvents.filter(e => {
+    if (!e.start?.dateTime) return false;
+    const evStart = new Date(e.start.dateTime);
+    const evEnd = new Date(e.end.dateTime);
+    return evStart < end && evEnd > startTime;
+  });
+}
 
 // ─── Schedule task ────────────────────────────────────────────────────────────
 window.scheduleTask = async function(id) {
@@ -590,14 +610,35 @@ window.scheduleTask = async function(id) {
     return;
   }
 
-  const bestIdx = await AI.suggestSchedule(task, slots);
-  const slot = slots[bestIdx];
-  await Calendar.scheduleTask(task, slot.start);
-  await Sheets.updateTask(id, { scheduled_at: slot.start.toISOString() });
+  const gezinEvents = await Calendar.getGezinEvents(today);
+  const bestIdx = await AI.suggestSchedule(task, slots, gezinEvents);
+  let chosenSlot = slots[bestIdx];
+
+  const conflicts = gezinConflictsAt(chosenSlot.start, task.duration, gezinEvents);
+  if (conflicts.length > 0) {
+    setLoading(false);
+    const names = conflicts.map(e => e.summary).join(', ');
+    const planAround = confirm(`Je hebt op dit tijdstip al "${names}" in de gezinsagenda staan. Moet ik hier omheen plannen?`);
+    if (planAround) {
+      const clearSlots = slots.filter(s => gezinConflictsAt(s.start, task.duration, gezinEvents).length === 0);
+      if (clearSlots.length === 0) {
+        alert('Er zijn geen vrije tijdsloten die niet overlappen met de gezinsagenda.');
+        return;
+      }
+      setLoading(true);
+      const newIdx = await AI.suggestSchedule(task, clearSlots, gezinEvents);
+      chosenSlot = clearSlots[newIdx];
+    } else {
+      setLoading(true);
+    }
+  }
+
+  await Calendar.scheduleTask(task, chosenSlot.start);
+  await Sheets.updateTask(id, { scheduled_at: chosenSlot.start.toISOString() });
   await loadData();
   setLoading(false);
 
-  const timeStr = slot.start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = chosenSlot.start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
   alert(`Ingepland om ${timeStr}`);
   switchView('today');
 };
@@ -635,7 +676,7 @@ window.sendChat = async function() {
   renderChat();
 
   setLoading(true);
-  const reply = await AI.chat(msg, state.tasks, state.todayEvents, state.chatHistory.slice(-10));
+  const reply = await AI.chat(msg, state.tasks, state.todayEvents, state.chatHistory.slice(-10), state.gezinEvents || []);
   setLoading(false);
 
   state.chatHistory.push({ role: 'assistant', content: reply });

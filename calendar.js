@@ -6,6 +6,30 @@ const BASE = 'https://www.googleapis.com/calendar/v3';
 
 export const Calendar = {
   calendarId: 'primary',
+  gezinCalendarId: null,
+
+  async getGezinCalendarId() {
+    if (this.gezinCalendarId) return this.gezinCalendarId;
+    const res = await fetch(`${BASE}/users/me/calendarList`, { headers: Auth.getHeaders() });
+    const data = await res.json();
+    const cal = (data.items || []).find(c => c.summary === 'Gezin');
+    this.gezinCalendarId = cal?.id || null;
+    return this.gezinCalendarId;
+  },
+
+  async getGezinEvents(date) {
+    const calId = await this.getGezinCalendarId();
+    if (!calId) return [];
+    const d = new Date(date);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0).toISOString();
+    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0).toISOString();
+    const res = await fetch(
+      `${BASE}/calendars/${encodeURIComponent(calId)}/events?timeMin=${start}&timeMax=${end}&singleEvents=true&orderBy=startTime`,
+      { headers: Auth.getHeaders() }
+    );
+    const data = await res.json();
+    return data.items || [];
+  },
 
   async getTodayEvents() {
     const now = new Date();
