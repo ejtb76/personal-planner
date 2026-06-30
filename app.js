@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '1.3';
+const VERSION = '1.4';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -13,6 +13,7 @@ let state = {
   tasks: [],
   todayEvents: [],
   gezinEvents: [],
+  blockDays: [],
   prioritized: [],
   chatHistory: [],
   digest: null,
@@ -66,10 +67,11 @@ async function loadData() {
   setLoading(true);
   try {
     await Sheets.ensureSheet();
-    [state.tasks, state.todayEvents, state.gezinEvents] = await Promise.all([
+    [state.tasks, state.todayEvents, state.gezinEvents, state.blockDays] = await Promise.all([
       Sheets.getAllTasks(),
       Calendar.getTodayEvents(),
-      Calendar.getGezinEvents(new Date())
+      Calendar.getGezinEvents(new Date()),
+      Sheets.getBlockDays()
     ]);
     // Auto-prioritize on load
     if (state.tasks.filter(t => t.status === 'open').length > 0) {
@@ -661,7 +663,7 @@ window.saveTask = async function(id) {
 // ─── Later vandaag met ruimtecheck ────────────────────────────────────────────
 async function _laterTodayWithCheck(task) {
   setLoading(true);
-  const slots = await Calendar.getFreeSlots(new Date(), task.duration);
+  const slots = await Calendar.getFreeSlots(new Date(), task.duration, state.blockDays);
   setLoading(false);
 
   if (slots.length === 0) {
@@ -891,6 +893,11 @@ async function _doPostpone(task, newDateStr, newDeadline) {
     alert('Deze taak is ingesteld als "niet in het weekend". Kies een werkdag.');
     return;
   }
+  const blockDay = state.blockDays.find(b => newDateStr >= b.start_date && newDateStr <= b.end_date);
+  if (blockDay && !blockDay.half_day) {
+    alert(`Die dag is geblokkeerd${blockDay.label ? ' (' + blockDay.label + ')' : ''}. Kies een andere datum.`);
+    return;
+  }
   setLoading(true);
   await Calendar.deleteTaskEvent(task.id);
 
@@ -900,7 +907,7 @@ async function _doPostpone(task, newDateStr, newDeadline) {
 
   const newDate = new Date(newDateStr);
   const gezinEvents = await Calendar.getGezinEvents(newDate);
-  const slots = await Calendar.getFreeSlots(newDate, task.duration);
+  const slots = await Calendar.getFreeSlots(newDate, task.duration, state.blockDays);
 
   if (slots.length > 0) {
     const updatedTask = newDeadline ? { ...task, deadline: newDeadline } : task;
@@ -1017,6 +1024,26 @@ window.scheduleTaskManual = async function(id, datetimeLocalStr) {
     alert('Deze taak is ingesteld als "niet in het weekend". Kies een datum door de week.');
     return;
   }
+  const blockDay = state.blockDays.find(b => {
+    const ds = startTime.toISOString().slice(0, 10);
+    return ds >= b.start_date && ds <= b.end_date;
+  });
+  if (blockDay) {
+    const lbl = blockDay.label ? ` (${blockDay.label})` : '';
+    if (!blockDay.half_day) {
+      alert(`Die datum is geblokkeerd${lbl}. Kies een andere datum.`);
+      return;
+    }
+    const hour = startTime.getHours();
+    if (blockDay.half_day === 'morning' && hour < 13) {
+      alert(`De ochtend van die dag is geblokkeerd${lbl}. Kies een tijdstip na 13:00.`);
+      return;
+    }
+    if (blockDay.half_day === 'afternoon' && hour >= 13) {
+      alert(`De middag van die dag is geblokkeerd${lbl}. Kies een tijdstip voor 13:00.`);
+      return;
+    }
+  }
 
   const gezinEvents = await Calendar.getGezinEvents(startTime);
   const conflicts = gezinConflictsAt(startTime, task.duration, gezinEvents);
@@ -1066,7 +1093,7 @@ window.scheduleTask = async function(id) {
 
   setLoading(true);
   const today = new Date();
-  const slots = await Calendar.getFreeSlots(today, task.duration);
+  const slots = await Calendar.getFreeSlots(today, task.duration, state.blockDays);
 
   if (slots.length === 0) {
     setLoading(false);
@@ -1150,6 +1177,24 @@ window.sendChat = async function() {
 // ─── Settings view ────────────────────────────────────────────────────────────
 function renderSettings() {
   const config = state.config || {};
+  const blockDays = state.blockDays || [];
+
+  const halfDayLabel = hd => hd === 'morning' ? 'ochtend' : hd === 'afternoon' ? 'middag' : 'hele dag';
+  const formatRange = b => b.start_date === b.end_date
+    ? formatDate(b.start_date)
+    : `${formatDate(b.start_date)} – ${formatDate(b.end_date)}`;
+
+  const blockList = blockDays.length === 0
+    ? `<p style="font-size:0.82rem;color:var(--muted);margin:0.25rem 0 0.75rem">Geen blokdagen ingesteld.</p>`
+    : blockDays.map(b => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:0.88rem;font-weight:500">${b.label || 'Blokdag'}</div>
+          <div style="font-size:0.75rem;color:var(--muted)">${formatRange(b)} · ${halfDayLabel(b.half_day)}</div>
+        </div>
+        <button class="btn-ghost" style="flex:0;padding:0.3rem 0.6rem;font-size:0.8rem;color:#e05" onclick="window.removeBlockDay('${b.id}')">✕</button>
+      </div>`).join('');
+
   $('main-content').innerHTML = `
     <div class="add-view">
       <div class="section-label">Configuratie</div>
@@ -1168,9 +1213,91 @@ function renderSettings() {
       <button class="btn-primary" onclick="window.saveSettings()">Opslaan</button>
       <button class="btn-ghost" style="margin-top:0.5rem;color:#e05;" onclick="window.doReset()">Alles wissen & opnieuw</button>
       <div style="text-align:center;font-size:0.75rem;color:var(--muted);margin-top:1rem">v${VERSION}</div>
+
+      <div class="section-label" style="margin-top:2rem">Blokdagen</div>
+      <p style="font-size:0.8rem;color:var(--muted);margin:0 0 0.75rem">Vakanties, vrije dagen of dagdelen waarop niets gepland mag worden.</p>
+      ${blockList}
+
+      <div id="block-day-form" style="display:none;margin-top:0.75rem;padding:0.75rem;background:var(--surface2);border-radius:8px">
+        <div class="form-group">
+          <label>Omschrijving</label>
+          <input type="text" id="block-label" placeholder="bijv. Vakantie, Uitvaart oma">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+          <div class="form-group">
+            <label>Startdatum</label>
+            <input type="date" id="block-start">
+          </div>
+          <div class="form-group">
+            <label>Einddatum</label>
+            <input type="date" id="block-end">
+            <small style="color:var(--muted);font-size:0.72rem">Leeg = alleen startdatum</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Dagdeel</label>
+          <select id="block-half">
+            <option value="">Hele dag</option>
+            <option value="morning">Ochtend (08:00–13:00)</option>
+            <option value="afternoon">Middag (13:00–21:00)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-primary" onclick="window.saveBlockDay()">Opslaan</button>
+          <button class="btn-ghost" onclick="document.getElementById('block-day-form').style.display='none'">Annuleren</button>
+        </div>
+      </div>
+      <button class="btn-ghost" onclick="document.getElementById('block-day-form').style.display='block'" style="margin-top:0.75rem;width:100%">+ Dag toevoegen</button>
     </div>
   `;
 }
+
+window.saveBlockDay = async function() {
+  const label = document.getElementById('block-label').value.trim();
+  const start = document.getElementById('block-start').value;
+  const end = document.getElementById('block-end').value || start;
+  const half_day = document.getElementById('block-half').value;
+  if (!start) { alert('Kies een startdatum.'); return; }
+  if (end < start) { alert('Einddatum moet na startdatum liggen.'); return; }
+
+  setLoading(true);
+  await Sheets.addBlockDay({ label, start_date: start, end_date: end, half_day });
+  state.blockDays = await Sheets.getBlockDays();
+
+  const conflicts = state.tasks.filter(t => {
+    if (!t.scheduled_at) return false;
+    const d = t.scheduled_at.slice(0, 10);
+    return d >= start && d <= end;
+  });
+
+  setLoading(false);
+  renderSettings();
+
+  if (conflicts.length > 0) {
+    const names = conflicts.map(t => `- ${t.title}`).join('\n');
+    if (confirm(`${conflicts.length} taak(en) staan gepland in deze periode:\n${names}\n\nVerwijder hun tijdsloten?`)) {
+      setLoading(true);
+      for (const task of conflicts) {
+        await Calendar.deleteTaskEvent(task.id);
+        await Sheets.updateTask(task.id, { scheduled_at: '' });
+      }
+      await loadData();
+      setLoading(false);
+      renderSettings();
+    }
+  }
+};
+
+window.removeBlockDay = async function(id) {
+  const day = state.blockDays.find(b => b.id === id);
+  const label = day?.label || 'deze blokdag';
+  if (!confirm(`"${label}" verwijderen?`)) return;
+  setLoading(true);
+  await Sheets.deleteBlockDay(id);
+  state.blockDays = await Sheets.getBlockDays();
+  setLoading(false);
+  renderSettings();
+};
 
 window.saveSettings = function() {
   saveConfig({

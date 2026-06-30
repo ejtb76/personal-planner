@@ -60,11 +60,19 @@ export const Calendar = {
     return data.items || [];
   },
 
-  async getFreeSlots(date, durationMinutes) {
-    // Get events for the day and find free slots between 8:00 and 21:00
+  async getFreeSlots(date, durationMinutes, blockDays = []) {
     const d = new Date(date);
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 8, 0);
-    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 21, 0);
+    const dateStr = d.toISOString().slice(0, 10);
+    const block = blockDays.find(b => dateStr >= b.start_date && dateStr <= b.end_date);
+
+    if (block && !block.half_day) return []; // hele dag geblokkeerd
+
+    let startHour = 8, endHour = 21;
+    if (block?.half_day === 'morning') startHour = 13;  // ochtend geblokkeerd → alleen middag
+    if (block?.half_day === 'afternoon') endHour = 13;  // middag geblokkeerd → alleen ochtend
+
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), startHour, 0);
+    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), endHour, 0);
 
     const res = await fetch(
       `${BASE}/calendars/${encodeURIComponent(this.calendarId)}/events?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime`,

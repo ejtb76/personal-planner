@@ -19,6 +19,7 @@ export const Sheets = {
   spreadsheetId: null,
   sheetName: 'Taken',
   statsSheetName: 'Statistieken',
+  blockSheetName: 'Blokdagen',
 
   init(spreadsheetId) {
     this.spreadsheetId = spreadsheetId;
@@ -37,6 +38,9 @@ export const Sheets = {
     if (!sheets.some(s => s.properties.title === this.statsSheetName)) {
       await this._createStatsSheet();
     }
+    if (!sheets.some(s => s.properties.title === this.blockSheetName)) {
+      await this._createBlockDaysSheet();
+    }
   },
 
   async _createSheet() {
@@ -51,6 +55,78 @@ export const Sheets = {
       'id', 'title', 'notes', 'deadline', 'duration_min',
       'priority', 'status', 'category', 'dependencies', 'created_at', 'scheduled_at', 'recurrence', 'no_weekend'
     ]]);
+  },
+
+  async _createBlockDaysSheet() {
+    await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: Auth.getHeaders(),
+      body: JSON.stringify({
+        requests: [{ addSheet: { properties: { title: this.blockSheetName } } }]
+      })
+    });
+    await this._write(`${this.blockSheetName}!A1:F1`, [[
+      'id', 'label', 'start_date', 'end_date', 'half_day', 'created_at'
+    ]]);
+  },
+
+  async getBlockDays() {
+    const res = await fetch(
+      `${BASE}/${this.spreadsheetId}/values/${encodeURIComponent(this.blockSheetName + '!A2:F')}`,
+      { headers: Auth.getHeaders() }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.values || []).map(row => ({
+      id: row[0] || '',
+      label: row[1] || '',
+      start_date: row[2] || '',
+      end_date: row[3] || row[2] || '',
+      half_day: row[4] || '',
+      created_at: row[5] || ''
+    })).filter(b => b.id && b.start_date);
+  },
+
+  async addBlockDay(blockDay) {
+    const id = 'block_' + Date.now();
+    await this._append(this.blockSheetName, 'A:F', [
+      id,
+      blockDay.label || '',
+      blockDay.start_date,
+      blockDay.end_date || blockDay.start_date,
+      blockDay.half_day || '',
+      new Date().toISOString()
+    ]);
+    return id;
+  },
+
+  async deleteBlockDay(id) {
+    const days = await this.getBlockDays();
+    const idx = days.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const metaRes = await fetch(
+      `${BASE}/${this.spreadsheetId}?fields=sheets.properties`,
+      { headers: Auth.getHeaders() }
+    );
+    const meta = await metaRes.json();
+    const sheet = meta.sheets?.find(s => s.properties.title === this.blockSheetName);
+    if (!sheet) return;
+    await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: Auth.getHeaders(),
+      body: JSON.stringify({
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheet.properties.sheetId,
+              dimension: 'ROWS',
+              startIndex: idx + 1,
+              endIndex: idx + 2
+            }
+          }
+        }]
+      })
+    });
   },
 
   async _createStatsSheet() {
