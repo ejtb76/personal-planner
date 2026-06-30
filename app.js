@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.8';
+const VERSION = '0.9';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -405,6 +405,10 @@ function renderAdd() {
         <div class="form-group half">
           <label>Deadline</label>
           <input type="date" id="a-deadline">
+          <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.4rem;font-size:0.82rem;color:var(--muted);text-transform:none;letter-spacing:0;cursor:pointer">
+            <input type="checkbox" id="a-no-deadline" onchange="document.getElementById('a-deadline').disabled=this.checked;if(this.checked)document.getElementById('a-deadline').value=''">
+            Geen deadline
+          </label>
         </div>
         <div class="form-group half">
           <label>Duur (minuten)</label>
@@ -468,7 +472,11 @@ window.openTask = function(id) {
       <div class="form-row">
         <div class="form-group half">
           <label>Deadline</label>
-          <input type="date" id="e-deadline" value="${task.deadline}">
+          <input type="date" id="e-deadline" value="${task.deadline}" ${!task.deadline ? 'disabled' : ''}>
+          <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.4rem;font-size:0.82rem;color:var(--muted);text-transform:none;letter-spacing:0;cursor:pointer">
+            <input type="checkbox" id="e-no-deadline" ${!task.deadline ? 'checked' : ''} onchange="document.getElementById('e-deadline').disabled=this.checked;if(this.checked)document.getElementById('e-deadline').value=''">
+            Geen deadline
+          </label>
         </div>
         <div class="form-group half">
           <label>Duur (min)</label>

@@ -51,7 +51,9 @@ export const AI = {
 
     const system = `Je bent een planningsassistent. Rangschik taken op basis van objectieve criteria: deadline-urgentie, tijdsduur, agenda-ruimte en onderlinge afhankelijkheden. Geen aanmoedigingen, geen opvulling.
 
-Per taak één zin: de feitelijke reden waarom deze hoger staat dan de volgende. Benoem het concrete criterium (bijv. "deadline morgen", "blokkeert taak X", "past alleen in de ochtend").
+Vaste regel: taken zonder deadline staan altijd onderaan, na alle taken met een deadline. Ze mogen worden verdrongen als urgentere taken met deadlines om hetzelfde tijdslot vragen.
+
+Per taak één zin: de feitelijke reden waarom deze hoger staat dan de volgende. Benoem het concrete criterium (bijv. "deadline morgen", "blokkeert taak X", "geen deadline dus laagste prioriteit").
 Antwoord in het Nederlands.
 Retourneer ALLEEN valide JSON in dit formaat:
 [{"id": "task_id", "reason": "korte feitelijke reden"}]`;
@@ -183,12 +185,16 @@ Welk tijdslot past het beste?`;
 
     const user = `Vandaag: ${todayStr}
 Taak: ${task.title} (${task.duration} min${task.notes ? ', ' + task.notes : ''})
-${deadline ? `Deadline: ${deadline}` : 'Geen deadline'}
+${deadline ? `Deadline: ${deadline}` : 'Geen deadline — lage prioriteit, mag achteraan'}
 
 Andere open taken met deadline:
 ${otherTasks.length > 0 ? JSON.stringify(otherTasks) : 'Geen'}
 
-Kies een datum na vandaag${deadline ? ` en vóór de deadline (${deadline})` : ''} waarop deze taak het beste past. Houd rekening met spreiding: vermijd datums waarop al veel andere deadlines vallen. Kies niet te laat (geef buffer voor de deadline) en niet te vroeg als er geen urgentie is.`;
+${deadline
+  ? `Kies een datum na vandaag en vóór de deadline (${deadline}). Geef voldoende buffer: plan niet op de deadline zelf. Vermijd datums waarop al veel andere deadlines vallen.`
+  : `Geen deadline: plan deze taak ongeveer 1–2 weken vanaf nu. Taken zonder deadline hebben de laagste prioriteit en mogen worden verdrongen door urgentere taken.`
+}`;
+
 
     try {
       const response = await this._call(system, user);
