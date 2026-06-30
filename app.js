@@ -187,6 +187,7 @@ function renderApp() {
         <span class="app-logo">◈</span>
         <span class="app-title" id="view-title">Vandaag</span>
         <button class="icon-btn" onclick="window.refreshData()" title="Verversen">↻</button>
+        <span style="font-size:0.65rem;color:var(--muted)">v${VERSION}</span>
       </header>
 
       <main id="main-content" class="main-content"></main>
