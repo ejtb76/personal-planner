@@ -141,5 +141,38 @@ export const Sheets = {
 
   async completeTask(id) {
     await this.updateTask(id, { status: 'done' });
+  },
+
+  async deleteTask(id) {
+    const tasks = await this.getAllTasks();
+    const idx = tasks.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    const rowIndex = idx + 1; // +1 for header row (0-indexed in API)
+
+    const metaRes = await fetch(
+      `${BASE}/${this.spreadsheetId}?fields=sheets.properties`,
+      { headers: Auth.getHeaders() }
+    );
+    const meta = await metaRes.json();
+    const sheet = meta.sheets?.find(s => s.properties.title === this.sheetName);
+    if (!sheet) return;
+    const sheetId = sheet.properties.sheetId;
+
+    await fetch(`${BASE}/${this.spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: Auth.getHeaders(),
+      body: JSON.stringify({
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: 'ROWS',
+              startIndex: rowIndex,
+              endIndex: rowIndex + 1
+            }
+          }
+        }]
+      })
+    });
   }
 };

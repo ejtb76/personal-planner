@@ -458,6 +458,7 @@ window.openTask = function(id) {
         <button class="btn-schedule" onclick="window.showScheduleModal('${id}')">📅 Plannen</button>
       </div>
       <button class="btn-ghost" style="margin-top:0.5rem" onclick="window.switchView('tasks')">← Terug</button>
+      <button class="btn-ghost" style="margin-top:0.5rem;color:var(--red);border-color:rgba(224,82,82,0.3)" onclick="window.deleteTask('${id}')">Verwijderen</button>
     </div>
   `;
   $('view-title').textContent = 'Taak';
@@ -472,6 +473,16 @@ window.saveTask = async function(id) {
     duration: parseInt($('e-duration').value) || 30,
     category: $('e-category').value.trim()
   });
+  await loadData();
+  setLoading(false);
+  switchView('tasks');
+};
+
+window.deleteTask = async function(id) {
+  if (!confirm('Taak verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
+  setLoading(true);
+  await Sheets.deleteTask(id);
+  await Calendar.deleteTaskEvent(id);
   await loadData();
   setLoading(false);
   switchView('tasks');
