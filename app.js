@@ -1,5 +1,7 @@
 // app.js — main application
 
+const VERSION = '0.4';
+
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
 import { Calendar } from './calendar.js';
@@ -659,6 +661,7 @@ function renderSettings() {
       </div>
       <button class="btn-primary" onclick="window.saveSettings()">Opslaan</button>
       <button class="btn-ghost" style="margin-top:0.5rem;color:#e05;" onclick="window.doReset()">Alles wissen & opnieuw</button>
+      <div style="text-align:center;font-size:0.75rem;color:var(--muted);margin-top:1rem">v${VERSION}</div>
     </div>
   `;
 }
