@@ -1,6 +1,6 @@
 // app.js — main application
 
-const VERSION = '0.6';
+const VERSION = '0.7';
 
 import { Auth } from './auth.js';
 import { Sheets } from './sheets.js';
@@ -263,7 +263,8 @@ function renderToday() {
         </div>
         <div class="task-item-sub">⏱ ${t.duration} min${t.aiReason ? ' · ' + t.aiReason : ''}</div>
       </div>
-      <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.showScheduleModal('${t.id}')">📅</button>
+      <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.showScheduleModal('${t.id}')" title="Inplannen">📅</button>
+      <button class="btn-schedule" style="flex:0;padding:0.4rem 0.65rem;font-size:0.8rem" onclick="event.stopPropagation(); window.postponeTask('${t.id}')" title="Doorschuiven">→</button>
     </div>
   `;
 
@@ -308,6 +309,7 @@ function renderToday() {
           <div class="focus-actions">
             <button class="btn-done" onclick="event.stopPropagation(); window.completeTask('${open[0].id}')">✓ Gedaan</button>
             <button class="btn-schedule" onclick="event.stopPropagation(); window.showScheduleModal('${open[0].id}')">📅 Inplannen</button>
+            <button class="btn-schedule" onclick="event.stopPropagation(); window.postponeTask('${open[0].id}')">→ Doorschuiven</button>
           </div>
         </div>
 
@@ -481,6 +483,7 @@ window.openTask = function(id) {
         <button class="btn-primary" onclick="window.saveTask('${id}')">Opslaan</button>
         <button class="btn-done" onclick="window.completeTask('${id}')">✓ Gedaan</button>
         <button class="btn-schedule" onclick="window.showScheduleModal('${id}')">📅 Plannen</button>
+        <button class="btn-schedule" onclick="window.postponeTask('${id}')">→ Doorschuiven</button>
       </div>
       <button class="btn-ghost" style="margin-top:0.5rem" onclick="window.switchView('tasks')">← Terug</button>
       <button class="btn-ghost" style="margin-top:0.5rem;color:var(--red);border-color:rgba(224,82,82,0.3)" onclick="window.deleteTask('${id}')">Verwijderen</button>
@@ -502,6 +505,136 @@ window.saveTask = async function(id) {
   setLoading(false);
   switchView('tasks');
 };
+
+// ─── Postpone task ────────────────────────────────────────────────────────────
+window.postponeTask = function(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const minDateStr = tomorrow.toISOString().slice(0, 10);
+
+  if (task.deadline) {
+    const deadline = new Date(task.deadline);
+    deadline.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((deadline - today) / 86400000);
+
+    if (daysLeft <= 1) {
+      _showPostponeWarning(task, daysLeft, minDateStr);
+      return;
+    }
+  }
+
+  _showPostponePicker(task, minDateStr, task.deadline ? new Date(task.deadline).toISOString().slice(0, 10) : '');
+};
+
+function _showPostponeWarning(task, daysLeft, minDateStr) {
+  const label = daysLeft <= 0 ? 'vandaag' : 'morgen';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">Deadline is ${label}</div>
+      <div style="font-size:0.88rem;color:var(--muted);line-height:1.5">
+        De deadline voor <strong>${task.title}</strong> is ${label}. Doorschuiven betekent dat je de deadline mist.
+      </div>
+      <div class="modal-options">
+        <button class="btn-modal-option" id="pp-keep">Laten staan — ik doe het vandaag</button>
+        <button class="btn-modal-option" id="pp-change">Deadline aanpassen en doorschuiven</button>
+      </div>
+      <div class="modal-dt-picker" id="pp-deadline-picker">
+        <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">Nieuwe deadline</label>
+        <input type="date" id="pp-new-deadline" min="${minDateStr}">
+        <label style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;margin-top:0.25rem">Doorschuiven naar</label>
+        <input type="date" id="pp-new-date" min="${minDateStr}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="pp-cancel">Annuleren</button>
+        <button class="btn-primary" id="pp-confirm" style="display:none">Bevestigen</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#pp-keep').addEventListener('click', () => document.body.removeChild(overlay));
+  overlay.querySelector('#pp-cancel').addEventListener('click', () => document.body.removeChild(overlay));
+
+  overlay.querySelector('#pp-change').addEventListener('click', () => {
+    overlay.querySelector('#pp-change').classList.add('selected');
+    overlay.querySelector('#pp-deadline-picker').classList.add('visible');
+    overlay.querySelector('#pp-confirm').style.display = '';
+  });
+
+  overlay.querySelector('#pp-confirm').addEventListener('click', () => {
+    const newDeadline = overlay.querySelector('#pp-new-deadline').value;
+    const newDate = overlay.querySelector('#pp-new-date').value;
+    if (!newDeadline || !newDate) { alert('Vul beide datums in.'); return; }
+    document.body.removeChild(overlay);
+    _doPostpone(task, newDate, newDeadline);
+  });
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+}
+
+function _showPostponePicker(task, minDateStr, maxDateStr) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">Doorschuiven naar</div>
+      <div class="modal-dt-picker visible">
+        <input type="date" id="pp-date" min="${minDateStr}" ${maxDateStr ? `max="${maxDateStr}"` : ''}>
+        ${maxDateStr ? `<div style="font-size:0.75rem;color:var(--muted)">Deadline: ${new Date(maxDateStr).toLocaleDateString('nl-NL', {day:'numeric',month:'long'})}</div>` : ''}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="pp-cancel">Annuleren</button>
+        <button class="btn-primary" id="pp-confirm">Doorschuiven</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#pp-cancel').addEventListener('click', () => document.body.removeChild(overlay));
+  overlay.querySelector('#pp-confirm').addEventListener('click', () => {
+    const newDate = overlay.querySelector('#pp-date').value;
+    if (!newDate) { alert('Kies een datum.'); return; }
+    document.body.removeChild(overlay);
+    _doPostpone(task, newDate, null);
+  });
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+}
+
+async function _doPostpone(task, newDateStr, newDeadline) {
+  setLoading(true);
+  await Calendar.deleteTaskEvent(task.id);
+
+  const updates = { scheduled_at: '' };
+  if (newDeadline) updates.deadline = newDeadline;
+  await Sheets.updateTask(task.id, updates);
+
+  const newDate = new Date(newDateStr);
+  const gezinEvents = await Calendar.getGezinEvents(newDate);
+  const slots = await Calendar.getFreeSlots(newDate, task.duration);
+
+  if (slots.length > 0) {
+    const updatedTask = newDeadline ? { ...task, deadline: newDeadline } : task;
+    const bestIdx = await AI.suggestSchedule(updatedTask, slots, gezinEvents);
+    const slot = slots[bestIdx];
+    await Calendar.scheduleTask(updatedTask, slot.start);
+    await Sheets.updateTask(task.id, { scheduled_at: slot.start.toISOString() });
+  }
+
+  await loadData();
+  setLoading(false);
+
+  const dateLabel = newDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  alert(`Doorgeschoven naar ${dateLabel}.${slots.length === 0 ? ' Geen vrije tijdsloten gevonden op die dag — taak staat open zonder agenda-event.' : ''}`);
+  switchView('today');
+}
 
 window.deleteTask = async function(id) {
   if (!confirm('Taak verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
