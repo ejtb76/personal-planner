@@ -50,7 +50,8 @@ export const Calendar = {
     const events = (data.items || []).filter(e => e.start?.dateTime); // exclude all-day
 
     const slots = [];
-    let cursor = new Date(start);
+    const now = new Date();
+    let cursor = new Date(Math.max(start.getTime(), now.getTime()));
 
     for (const event of events) {
       const evStart = new Date(event.start.dateTime);
