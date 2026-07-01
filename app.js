@@ -577,10 +577,11 @@ window.submitTask = async function() {
   };
 
   setLoading(true);
-  await Sheets.addTask(task);
+  const newId = await Sheets.addTask(task);
   await loadData();
   setLoading(false);
   switchView('today');
+  window.showScheduleModal(newId);
 };
 
 // ─── Task detail / edit ───────────────────────────────────────────────────────
