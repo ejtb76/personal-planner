@@ -494,95 +494,128 @@ function renderTasks() {
   `;
 }
 
-// ─── Add task view ────────────────────────────────────────────────────────────
+// ─── Add task view (wizard) ───────────────────────────────────────────────────
 function renderAdd() {
-  const openTasks = state.tasks.filter(t => t.status === 'open');
-  $('main-content').innerHTML = `
-    <div class="add-view">
-      <div class="form-group">
-        <label>Wat moet er gedaan worden? *</label>
-        <input type="text" id="a-title" placeholder="Taak omschrijving" autofocus>
-      </div>
-      <div class="form-group">
-        <label>Extra context (optioneel)</label>
-        <textarea id="a-notes" placeholder="Wat helpt om dit te begrijpen of te starten?" rows="2"></textarea>
-      </div>
-      <div class="form-row">
-        <div class="form-group half">
-          <label>Deadline</label>
-          <input type="date" id="a-deadline">
-          <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.4rem;font-size:0.82rem;color:var(--muted);text-transform:none;letter-spacing:0;cursor:pointer">
-            <input type="checkbox" id="a-no-deadline" onchange="document.getElementById('a-deadline').disabled=this.checked;if(this.checked)document.getElementById('a-deadline').value=''">
-            Geen deadline
-          </label>
-        </div>
-        <div class="form-group half">
-          <label>Duur (minuten)</label>
-          <input type="number" id="a-duration" value="30" min="5" step="5">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Categorie</label>
-        <input type="text" id="a-category" placeholder="bijv. werk, persoonlijk, gezondheid">
-      </div>
-      <div class="form-group">
-        <label>Herhaling</label>
-        <select id="a-recurrence" onchange="window._updateRecurrenceUI('a')">
-          <option value="">Niet herhalend</option>
-          <option value="daily">Elke dag</option>
-          <option value="weekdays">Elke werkdag</option>
-          <option value="weekends">In het weekend</option>
-          <option value="weekly">Keer per week</option>
-          <option value="monthly">Keer per maand</option>
-        </select>
-        <div id="a-recurrence-extra" style="display:none;align-items:center;gap:0.5rem;margin-top:0.4rem">
-          <input type="number" id="a-recurrence-count" value="2" min="1" max="7" style="width:64px;padding:0.4rem 0.5rem">
-          <span id="a-recurrence-unit" style="font-size:0.88rem;color:var(--muted)">keer per week</span>
-        </div>
-      </div>
-      <div id="a-no-weekend-row">
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--muted);cursor:pointer">
-          <input type="checkbox" id="a-no-weekend">
-          Niet in het weekend inplannen
-        </label>
-      </div>
-      ${openTasks.length > 0 ? `
-        <div class="form-group">
-          <label>Wacht op (afhankelijkheid)</label>
-          <select id="a-dep">
-            <option value="">Geen</option>
-            ${openTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
-          </select>
-        </div>
-      ` : ''}
-      <button class="btn-primary" onclick="window.submitTask()">Toevoegen</button>
-    </div>
-  `;
-}
+  let step = 0;
+  const d = { title: '', notes: '', recurrence: '', recCount: 2, deadline: '', noWeekend: false, duration: 30, category: '' };
 
-window.submitTask = async function() {
-  const title = $('a-title')?.value.trim();
-  if (!title) { alert('Vul een taakomschrijving in.'); return; }
+  const FIXED_RECS = ['daily', 'weekdays', 'weekends'];
+  function steps() {
+    return ['title', 'notes', 'recurrence',
+      ...(FIXED_RECS.includes(d.recurrence) ? [] : ['deadline']),
+      'duration', 'category'];
+  }
 
-  const depVal = $('a-dep')?.value;
-  const task = {
-    title,
-    notes: $('a-notes')?.value.trim() || '',
-    deadline: $('a-deadline')?.value || '',
-    duration: parseInt($('a-duration')?.value) || 30,
-    category: $('a-category')?.value.trim() || '',
-    dependencies: depVal ? [depVal] : [],
-    recurrence: _getRecurrenceFromForm('a'),
-    no_weekend: document.getElementById('a-no-weekend')?.checked || false
+  function collect() {
+    const s = steps()[step];
+    if (s === 'title')      d.title     = document.getElementById('w-title')?.value.trim() || '';
+    if (s === 'notes')      d.notes     = document.getElementById('w-notes')?.value.trim() || '';
+    if (s === 'recurrence') { const c = document.getElementById('w-rec-count'); if (c) d.recCount = parseInt(c.value) || 2; }
+    if (s === 'deadline')   { d.deadline = document.getElementById('w-deadline')?.value || ''; d.noWeekend = document.getElementById('w-no-weekend')?.checked || false; }
+    if (s === 'duration')   d.duration  = parseInt(document.getElementById('w-dur-num')?.value) || 30;
+    if (s === 'category')   d.category  = document.getElementById('w-category')?.value.trim() || '';
+  }
+
+  function next() {
+    collect();
+    if (steps()[step] === 'title' && !d.title) { document.getElementById('w-title')?.focus(); return; }
+    if (step < steps().length - 1) { step++; render(); } else submit();
+  }
+
+  async function submit() {
+    collect();
+    if (!d.title) { step = 0; render(); return; }
+    let recurrence = d.recurrence;
+    if (recurrence === 'weekly' || recurrence === 'monthly') recurrence += ':' + d.recCount;
+    setLoading(true);
+    const newId = await Sheets.addTask({ title: d.title, notes: d.notes, deadline: d.deadline, duration: d.duration, category: d.category, dependencies: [], recurrence, no_weekend: d.noWeekend });
+    await loadData();
+    setLoading(false);
+    switchView('today');
+    window.showScheduleModal(newId);
+  }
+
+  function render() {
+    const ss = steps();
+    const s = ss[step];
+    const isLast = step === ss.length - 1;
+    const isOptional = s === 'notes' || s === 'category';
+    const DURS = [15, 30, 45, 60, 90, 120];
+    const RECS = [['', 'Eenmalig'], ['daily', 'Elke dag'], ['weekdays', 'Elke werkdag'], ['weekends', 'In het weekend'], ['weekly', 'Per week'], ['monthly', 'Per maand']];
+
+    const dots = ss.map((_, i) => `<div class="wdot${i === step ? ' wdot-a' : i < step ? ' wdot-d' : ''}"></div>`).join('');
+
+    const body = {
+      title: `<div class="wq">Wat moet er gedaan worden?</div>
+        <input id="w-title" class="winput" type="text" placeholder="Taakomschrijving" value="${d.title}" autofocus>`,
+
+      notes: `<div class="wq">Extra context?</div>
+        <div class="wsub">Wat helpt om dit te begrijpen of te starten?</div>
+        <textarea id="w-notes" class="winput" rows="4" placeholder="Optioneel...">${d.notes}</textarea>`,
+
+      recurrence: `<div class="wq">Is het een terugkerende taak?</div>
+        <div class="wpills" id="rec-pills">
+          ${RECS.map(([v, l]) => `<button class="wpill${d.recurrence === v ? ' sel' : ''}" data-rec="${v}" onclick="window._wRec('${v}')">${l}</button>`).join('')}
+        </div>
+        <div id="w-rec-detail" style="display:${d.recurrence === 'weekly' || d.recurrence === 'monthly' ? 'flex' : 'none'};align-items:center;gap:0.5rem;margin-top:0.75rem">
+          <input id="w-rec-count" type="number" value="${d.recCount}" min="1" max="${d.recurrence === 'monthly' ? 31 : 7}" style="width:64px">
+          <span id="w-rec-unit" style="color:var(--muted)">${d.recurrence === 'monthly' ? 'keer per maand' : 'keer per week'}</span>
+        </div>`,
+
+      deadline: `<div class="wq">Wanneer moet het klaar zijn?</div>
+        <input id="w-deadline" class="winput" type="date" value="${d.deadline}">
+        <label class="wcheck"><input type="checkbox" id="w-no-dl" onchange="const el=document.getElementById('w-deadline');el.disabled=this.checked;if(this.checked)el.value=''"> Geen deadline</label>
+        <label class="wcheck"><input type="checkbox" id="w-no-weekend" ${d.noWeekend ? 'checked' : ''}> Niet in het weekend inplannen</label>`,
+
+      duration: `<div class="wq">Hoe lang duurt het?</div>
+        <div class="wpills">
+          ${DURS.map(v => `<button class="wpill${d.duration === v ? ' sel' : ''}" onclick="window._wDur(${v})">${v < 60 ? v + ' min' : v / 60 + ' uur'}</button>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.75rem">
+          <span style="font-size:0.85rem;color:var(--muted)">Precies:</span>
+          <input id="w-dur-num" type="number" value="${d.duration}" min="5" step="5" style="width:80px">
+          <span style="font-size:0.85rem;color:var(--muted)">min</span>
+        </div>`,
+
+      category: `<div class="wq">Categorie?</div>
+        <div class="wsub">bijv. werk, persoonlijk, gezondheid</div>
+        <input id="w-category" class="winput" type="text" placeholder="Optioneel..." value="${d.category}">`
+    }[s];
+
+    $('main-content').innerHTML = `<div class="wadd">
+      <div class="wdots">${dots}</div>
+      ${body}
+      <div class="wactions">
+        ${step > 0 ? `<button class="btn-ghost" onclick="window._wBack()">← Terug</button>` : ''}
+        <button class="btn-primary" onclick="window._wNext()">${isLast ? 'Toevoegen ✓' : 'Volgende →'}</button>
+        ${isOptional ? `<button class="btn-ghost wskip" onclick="window._wSkip()">Overslaan</button>` : ''}
+      </div>
+    </div>`;
+
+    const inp = document.getElementById('w-title') || document.getElementById('w-category');
+    if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') window._wNext(); });
+  }
+
+  window._wNext = next;
+  window._wBack = () => { collect(); if (step > 0) { step--; render(); } };
+  window._wSkip = () => { collect(); if (step < steps().length - 1) { step++; render(); } else submit(); };
+  window._wRec  = v => {
+    const c = document.getElementById('w-rec-count'); if (c) d.recCount = parseInt(c.value) || 2;
+    d.recurrence = v;
+    document.querySelectorAll('#rec-pills .wpill').forEach(b => b.classList.toggle('sel', b.dataset.rec === v));
+    const show = v === 'weekly' || v === 'monthly';
+    const det = document.getElementById('w-rec-detail'); if (det) det.style.display = show ? 'flex' : 'none';
+    const u = document.getElementById('w-rec-unit'); if (u) u.textContent = v === 'monthly' ? 'keer per maand' : 'keer per week';
+    const ci = document.getElementById('w-rec-count'); if (ci) ci.max = v === 'monthly' ? 31 : 7;
+  };
+  window._wDur = v => {
+    d.duration = v;
+    document.querySelectorAll('.wpill[onclick^="window._wDur"]').forEach(b => b.classList.toggle('sel', b.textContent.trim() === (v < 60 ? v + ' min' : v / 60 + ' uur')));
+    const n = document.getElementById('w-dur-num'); if (n) n.value = v;
   };
 
-  setLoading(true);
-  const newId = await Sheets.addTask(task);
-  await loadData();
-  setLoading(false);
-  switchView('today');
-  window.showScheduleModal(newId);
-};
+  render();
+}
 
 // ─── Task detail / edit ───────────────────────────────────────────────────────
 window.openTask = function(id) {
